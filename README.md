@@ -1,3 +1,9 @@
 # calender_1
 
-A new Flutter project.
+自己写的一个日历应用，主要使用了flutter框架，数据库使用了sqflite，主要功能有：
+1. 查看日历
+2. 查看事件
+3. 添加事件
+4. 删除事件
+5. 导入导出事件
+
