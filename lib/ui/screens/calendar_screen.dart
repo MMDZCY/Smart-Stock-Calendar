@@ -83,7 +83,6 @@ class _CalendarScreenState extends State<CalendarScreen> with TickerProviderStat
     try {
       _notifications;
     } catch (e) {
-      // 如果_notifications未初始化，直接返回
       return;
     }
     
@@ -101,7 +100,6 @@ class _CalendarScreenState extends State<CalendarScreen> with TickerProviderStat
     final now = DateTime.now();
     final eventStart = event.startTime;
     
-    // 如果事件已经开始，不安排提醒
     if (eventStart.isBefore(now)) return;
     
     // 安排多个提醒时间点
@@ -118,10 +116,9 @@ class _CalendarScreenState extends State<CalendarScreen> with TickerProviderStat
       // 计算延迟时间（毫秒）
       final delay = reminderTime.difference(now).inMilliseconds;
       
-      // 生成唯一通知ID（确保在32位整数范围内）
+      // 生成唯一通知ID
       final notificationId = (event.id.hashCode % 1000000) + (reminderTime.millisecondsSinceEpoch % 1000);
       
-      // 使用show方法配合延迟计算来避免精确闹钟限制
       Future.delayed(Duration(milliseconds: delay), () {
         _notifications.show(
           notificationId,
@@ -180,7 +177,6 @@ class _CalendarScreenState extends State<CalendarScreen> with TickerProviderStat
     }
   }
   
-  // 手动同步订阅
   Future<void> _syncSubscriptions() async {
     try {
       final results = await _subscriptionManager.syncAllSubscriptions();
@@ -219,7 +215,7 @@ class _CalendarScreenState extends State<CalendarScreen> with TickerProviderStat
           subscriptionManager: _subscriptionManager,
         ),
       ),
-    ).then((_) => setState(() {})); // 返回后刷新界面
+    ).then((_) => setState(() {})); 
   }
   
   // 导出事件为ICS格式
@@ -328,7 +324,6 @@ class _CalendarScreenState extends State<CalendarScreen> with TickerProviderStat
     try {
       _notifications;
     } catch (e) {
-      // 如果_notifications未初始化，显示错误提示
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('通知服务尚未初始化，请稍后再试')),
@@ -365,7 +360,6 @@ class _CalendarScreenState extends State<CalendarScreen> with TickerProviderStat
   void _handleViewChange(int newIndex) {
     if (newIndex == _currentViewIndex) return;
     
-    // 淡出当前视图
     _opacityController.reverse().then((_) {
       // 更新视图索引
       setState(() {
@@ -375,7 +369,7 @@ class _CalendarScreenState extends State<CalendarScreen> with TickerProviderStat
           _focusedDay = DateTime.now();
         }
       });
-      // 缩小然后放大进入新视图
+
       _scaleController.value = 0.8;
       _scaleController.forward();
       _opacityController.forward();
@@ -393,23 +387,17 @@ class _CalendarScreenState extends State<CalendarScreen> with TickerProviderStat
     _handleViewChange(1);
   }
 
-  // 根据日期筛选事件 - 修改为返回List<dynamic>以兼容table_calendar 3.0+
   List<dynamic> _getEventsForDay(DateTime day) {
     return _eventsBox.values.where((event) {
       final start = event.startTime;
       final end = event.endTime;
-      
-      // 检查事件是否发生在指定日期
-      // 1. 事件开始时间在指定日期
-      // 2. 事件结束时间在指定日期  
-      // 3. 事件跨越指定日期（开始时间在指定日期之前，结束时间在指定日期之后）
       return (start.year == day.year && start.month == day.month && start.day == day.day) ||
              (end.year == day.year && end.month == day.month && end.day == day.day) ||
              (start.isBefore(day) && end.isAfter(day));
     }).toList();
   }
 
-  // 添加新事件
+  // 新事件
   void _addNewEvent() {
     if (_selectedDay == null) return;
     
@@ -497,7 +485,7 @@ class _CalendarScreenState extends State<CalendarScreen> with TickerProviderStat
           
           calendarStyle: const CalendarStyle(),
           
-          // 头部样式 - 简化设计
+          // 头部样式 
           headerStyle: const HeaderStyle(
             formatButtonVisible: false,
             titleCentered: true,
@@ -513,9 +501,8 @@ class _CalendarScreenState extends State<CalendarScreen> with TickerProviderStat
             headerMargin: EdgeInsets.symmetric(vertical: 12),
           ),
           
-          // 移除可能导致性能问题的locale参数
           
-          // 星期样式 - 使用中文显示
+          // 星期
           daysOfWeekStyle: const DaysOfWeekStyle(
             weekdayStyle: TextStyle(color: Colors.black, fontWeight: FontWeight.bold),
             weekendStyle: TextStyle(color: Colors.red, fontWeight: FontWeight.bold),
@@ -853,7 +840,6 @@ class _CalendarScreenState extends State<CalendarScreen> with TickerProviderStat
               ),
             ],
           ),
-          // 测试通知按钮
           IconButton(
             icon: const Icon(Icons.notifications),
             onPressed: _testNotification,
@@ -882,14 +868,12 @@ class _CalendarScreenState extends State<CalendarScreen> with TickerProviderStat
       ),
       body: Column(
           children: [
-            // 移除复杂的动画包装，直接显示视图以提高性能
             Expanded(
               child: _getCurrentView(),
             ),
-            // 在月视图和周视图时显示事件列表
             if (_currentViewIndex == 1 || _currentViewIndex == 2)
               SizedBox(
-                height: 200, // 设置固定高度
+                height: 200, 
                 child: _selectedDay == null
                     ? const Center(child: Text('请选择日期'))
                     : ValueListenableBuilder(
@@ -928,7 +912,6 @@ class _CalendarScreenState extends State<CalendarScreen> with TickerProviderStat
             ),
           ],
         ),
-      // 在月视图和周视图时显示添加事件按钮
       floatingActionButton: (_currentViewIndex == 1 || _currentViewIndex == 2) ? FloatingActionButton(
         onPressed: _addNewEvent,
         child: const Icon(Icons.add),

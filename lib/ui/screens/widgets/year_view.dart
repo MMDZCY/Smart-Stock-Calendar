@@ -237,15 +237,13 @@ class _MonthView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // 使用更轻量的InkWell替代GestureDetector，提供更好的点击反馈
     return InkWell(
       onTap: _onMonthTap,
-      // 使用圆角设计，与月视图统一
       borderRadius: BorderRadius.circular(8),
       child: Container(
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(8),
-          color: Colors.white, // 白色背景，与月视图统一
+          color: Colors.white, 
           border: Border.all(color: Colors.grey.shade300, width: 1), // 添加边框
           boxShadow: [
             BoxShadow(
@@ -255,26 +253,24 @@ class _MonthView extends StatelessWidget {
             ),
           ],
         ),
-        padding: EdgeInsets.all(8), // 适当内边距
-        child: SizedBox.expand( // 使用SizedBox.expand填满父容器
+        padding: EdgeInsets.all(8), 
+        child: SizedBox.expand( 
           child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch, // 拉伸填充
-            mainAxisAlignment: MainAxisAlignment.spaceEvenly, // 均匀分布所有内容
+            crossAxisAlignment: CrossAxisAlignment.stretch, 
+            mainAxisAlignment: MainAxisAlignment.spaceEvenly, 
             children: [
               Center(
                 child: Text(
                   '$month月',
                   style: TextStyle(
-                    color: Colors.black, // 黑色文字，与月视图统一
+                    color: Colors.black, 
                     fontWeight: FontWeight.bold,
-                    fontSize: 14, // 稍大字体提高可读性
+                    fontSize: 14, 
                   ),
                 ),
               ),
-              // 预定义星期标题，避免每次构建
               const _WeekDaysRow(),
-              // 使用更简单的月份视图，移除复杂的日期表格
-              Expanded( // 使用Expanded让日期表格填满剩余空间
+              Expanded( 
                 child: _SimpleMonthDays(year: year, month: month),
               ),
             ],
@@ -285,7 +281,7 @@ class _MonthView extends StatelessWidget {
   }
 }
 
-// 预定义的星期标题行
+
 class _WeekDaysRow extends StatelessWidget {
   const _WeekDaysRow();
 
@@ -306,7 +302,7 @@ class _WeekDaysRow extends StatelessWidget {
   }
 }
 
-// 优化填充的月份日期显示 - 填满可用空间
+
 class _SimpleMonthDays extends StatelessWidget {
   final int year;
   final int month;
@@ -318,24 +314,23 @@ class _SimpleMonthDays extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // 预计算月份数据
+    
     final daysInMonth = DateTime(year, month + 1, 0).day;
     final firstDayOfMonth = DateTime(year, month, 1);
     final firstDayOffset = firstDayOfMonth.weekday % 7;
     final rows = ((firstDayOffset + daysInMonth) / 7).ceil();
     
-    // 使用Expanded填满父容器空间
     return Column(
-      mainAxisAlignment: MainAxisAlignment.spaceEvenly, // 均匀分布所有行
+      mainAxisAlignment: MainAxisAlignment.spaceEvenly, 
       children: List.generate(rows, (rowIndex) {
-        return Expanded( // 每行都使用Expanded均匀分配高度
+        return Expanded( 
           child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceEvenly, // 均匀分布所有列
+            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
             children: List.generate(7, (colIndex) {
               final dayIndex = rowIndex * 7 + colIndex;
               
               if (dayIndex < firstDayOffset || dayIndex >= firstDayOffset + daysInMonth) {
-                return Expanded( // 空白单元格也使用Expanded
+                return Expanded( 
                   child: Container(
                     alignment: Alignment.center,
                     child: const Text(''),
@@ -347,15 +342,15 @@ class _SimpleMonthDays extends StatelessWidget {
               final date = DateTime(year, month, day);
               final special = LunarUtils.isHoliday(date);
               
-              return Expanded( // 日期单元格使用Expanded填满空间
+              return Expanded( 
                 child: Container(
                   alignment: Alignment.center,
                   child: Text(
                     '$day',
                     style: TextStyle(
-                      fontSize: 10, // 稍大的字体提高可读性
+                      fontSize: 10, 
                       fontWeight: special ? FontWeight.bold : FontWeight.normal,
-                      color: special ? Colors.red : Colors.black, // 特殊日期红色，普通日期黑色
+                      color: special ? Colors.red : Colors.black, 
                     ),
                   ),
                 ),

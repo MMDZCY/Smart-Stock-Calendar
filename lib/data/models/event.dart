@@ -1,7 +1,7 @@
 import 'package:hive/hive.dart';
 import 'package:intl/intl.dart';
 
-part 'event.g.dart';  // 由Hive生成的适配器代码
+part 'event.g.dart'; 
 
 @HiveType(typeId: 0)
 class Event extends HiveObject {
@@ -56,9 +56,8 @@ ${description != null ? 'DESCRIPTION:$description' : ''}
 END:VEVENT''';
   }
 
-  // 从ICS解析（后续可扩展）
+  // 从ICS解析
   static Event fromICalendar(String icsContent) {
-    // 实际项目中需使用icalendar库解析，这里仅作示例
     return Event(
       id: '',
       title: '',

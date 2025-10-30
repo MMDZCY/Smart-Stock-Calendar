@@ -1,7 +1,6 @@
 import 'dart:convert';
 import 'package:hive/hive.dart';
 import 'package:http/http.dart' as http;
-// 已移除未使用的导入 'package:icalendar/icalendar.dart'
 import '../data/models/event.dart';
 import '../data/models/calendar_subscription.dart';
 
@@ -51,14 +50,11 @@ class ImportExportManager {
   // 从ICS文件导入事件
   Future<int> importEventsFromICS(String icsContent) async {
     try {
-      // 简化解析逻辑 - 实际项目中应使用更完善的ICS解析库
-      // 这里仅作基本示例，解析VEVENT块
       final lines = icsContent.split('\n');
       int importedCount = 0;
       
       for (int i = 0; i < lines.length; i++) {
         if (lines[i].trim() == 'BEGIN:VEVENT') {
-          // 解析VEVENT块
           String? uid, title, location, description;
           DateTime? startTime, endTime;
           
@@ -109,9 +105,7 @@ class ImportExportManager {
   // 解析iCalendar日期时间格式
   DateTime _parseICalendarDateTime(String dateStr) {
     try {
-      // 处理基本格式：yyyyMMddTHHmmss 或 yyyyMMdd
       if (dateStr.contains('T')) {
-        // 带时间格式：yyyyMMddTHHmmss
         final year = int.parse(dateStr.substring(0, 4));
         final month = int.parse(dateStr.substring(4, 6));
         final day = int.parse(dateStr.substring(6, 8));
@@ -121,7 +115,6 @@ class ImportExportManager {
         
         return DateTime(year, month, day, hour, minute, second);
       } else {
-        // 仅日期格式：yyyyMMdd
         final year = int.parse(dateStr.substring(0, 4));
         final month = int.parse(dateStr.substring(4, 6));
         final day = int.parse(dateStr.substring(6, 8));
@@ -180,7 +173,7 @@ class SubscriptionManager {
       id: DateTime.now().microsecondsSinceEpoch.toString(),
       name: name,
       url: url,
-      lastSync: DateTime(1970), // 初始化为很久以前，强制第一次同步
+      lastSync: DateTime(1970), 
       syncIntervalHours: syncIntervalHours,
       color: color,
     );
@@ -297,10 +290,8 @@ class SubscriptionManager {
     }
   }
   
-  // 解析iCalendar日期时间格式（复用现有方法）
   DateTime _parseICalendarDateTime(String dateStr) {
     try {
-      // 处理基本格式：yyyyMMddTHHmmss 或 yyyyMMdd
       if (dateStr.contains('T')) {
         // 带时间格式：yyyyMMddTHHmmss
         final year = int.parse(dateStr.substring(0, 4));
