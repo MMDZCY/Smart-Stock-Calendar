@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:table_calendar/table_calendar.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
-// 移除未使用的导入
 import 'package:flutter/services.dart';
 import '../../data/models/event.dart';
 import '../../data/models/calendar_subscription.dart';
@@ -12,6 +11,7 @@ import 'widgets/event_card.dart';
 import 'widgets/year_view.dart';
 import 'event_edit_screen.dart';
 import 'subscription_management_screen.dart';
+import 'stock_market_data_screen.dart';
 
 class CalendarScreen extends StatefulWidget {
   const CalendarScreen({super.key});
@@ -386,6 +386,16 @@ class _CalendarScreenState extends State<CalendarScreen> with TickerProviderStat
     }
     _handleViewChange(1);
   }
+  
+  // 处理双击日期，跳转到行情数据页面
+  void _handleDoubleTapDay(DateTime day) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => StockMarketDataScreen(selectedDate: day),
+      ),
+    );
+  }
 
   List<dynamic> _getEventsForDay(DateTime day) {
     return _eventsBox.values.where((event) {
@@ -524,59 +534,71 @@ class _CalendarScreenState extends State<CalendarScreen> with TickerProviderStat
           calendarBuilders: CalendarBuilders(
             defaultBuilder: (context, day, focusedDay) {
               bool isHoliday = LunarUtils.isHoliday(day);
-              return Container(
-                alignment: Alignment.center,
-                child: Text(
-                  day.day.toString(),
-                  style: TextStyle(
-                    color: isSameDay(_selectedDay, day) ? Colors.white : (isHoliday ? Colors.red : Colors.black),
-                    fontWeight: FontWeight.bold,
+              return GestureDetector(
+                onDoubleTap: () => _handleDoubleTapDay(day),
+                child: Container(
+                  alignment: Alignment.center,
+                  child: Text(
+                    day.day.toString(),
+                    style: TextStyle(
+                      color: isSameDay(_selectedDay, day) ? Colors.white : (isHoliday ? Colors.red : Colors.black),
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
                 ),
               );
             },
             todayBuilder: (context, day, focusedDay) {
               bool isHoliday = LunarUtils.isHoliday(day);
-              return Container(
-                alignment: Alignment.center,
-                decoration: BoxDecoration(
-                  color: Colors.blue.withValues(alpha: 0.1),
-                  shape: BoxShape.circle,
-                ),
-                child: Text(
-                  day.day.toString(),
-                  style: TextStyle(
-                    color: isHoliday ? Colors.red : Colors.blue[800],
-                    fontWeight: FontWeight.bold,
+              return GestureDetector(
+                onDoubleTap: () => _handleDoubleTapDay(day),
+                child: Container(
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: Colors.blue.withValues(alpha: 0.1),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Text(
+                    day.day.toString(),
+                    style: TextStyle(
+                      color: isHoliday ? Colors.red : Colors.blue[800],
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
                 ),
               );
             },
             selectedBuilder: (context, day, focusedDay) {
-              return Container(
-                alignment: Alignment.center,
-                decoration: BoxDecoration(
-                  color: Colors.blue,
-                  shape: BoxShape.circle,
-                ),
-                child: Text(
-                  day.day.toString(),
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.bold,
+              return GestureDetector(
+                onDoubleTap: () => _handleDoubleTapDay(day),
+                child: Container(
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: Colors.blue,
+                    shape: BoxShape.circle,
+                  ),
+                  child: Text(
+                    day.day.toString(),
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
                 ),
               );
             },
             outsideBuilder: (context, day, focusedDay) {
               bool isHoliday = LunarUtils.isHoliday(day);
-              return Container(
-                alignment: Alignment.center,
-                child: Text(
-                  day.day.toString(),
-                  style: TextStyle(
-                    color: isHoliday ? Colors.red.withValues(alpha: 0.6) : Colors.grey.shade400,
-                    fontSize: 12,
+              return GestureDetector(
+                onDoubleTap: () => _handleDoubleTapDay(day),
+                child: Container(
+                  alignment: Alignment.center,
+                  child: Text(
+                    day.day.toString(),
+                    style: TextStyle(
+                      color: isHoliday ? Colors.red.withValues(alpha: 0.6) : Colors.grey.shade400,
+                      fontSize: 12,
+                    ),
                   ),
                 ),
               );
@@ -672,113 +694,125 @@ class _CalendarScreenState extends State<CalendarScreen> with TickerProviderStat
               // 转换为农历日期
               final lunarDate = LunarUtils.solarToLunar(day);
               bool isHoliday = LunarUtils.isHoliday(day);
-              return Container(
-                alignment: Alignment.center,
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Text(
-                      day.day.toString(),
-                      style: TextStyle(
-                        color: isSameDay(_selectedDay, day) ? Colors.white : (isHoliday ? Colors.red : Colors.black),
-                        fontSize: 14,
+              return GestureDetector(
+                onDoubleTap: () => _handleDoubleTapDay(day),
+                child: Container(
+                  alignment: Alignment.center,
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Text(
+                        day.day.toString(),
+                        style: TextStyle(
+                          color: isSameDay(_selectedDay, day) ? Colors.white : (isHoliday ? Colors.red : Colors.black),
+                          fontSize: 14,
+                        ),
                       ),
-                    ),
-                    Text(
-                      lunarDate.getShortDescription().split('月')[1], // 只显示农历日
-                      style: TextStyle(
-                        fontSize: 10,
-                        color: isSameDay(_selectedDay, day) ? Colors.white70 : (isHoliday ? Colors.red.withValues(alpha: 0.8) : Colors.grey.shade600),
+                      Text(
+                        lunarDate.getShortDescription().split('月')[1], // 只显示农历日
+                        style: TextStyle(
+                          fontSize: 10,
+                          color: isSameDay(_selectedDay, day) ? Colors.white70 : (isHoliday ? Colors.red.withValues(alpha: 0.8) : Colors.grey.shade600),
+                        ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               );
             },
             todayBuilder: (context, day, focusedDay) {
               final lunarDate = LunarUtils.solarToLunar(day);
               bool isHoliday = LunarUtils.isHoliday(day);
-              return Container(
-                alignment: Alignment.center,
-                decoration: BoxDecoration(
-                  color: Colors.blue.withValues(alpha: 0.1),
-                  shape: BoxShape.circle,
-                ),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Text(
-                      day.day.toString(),
-                      style: TextStyle(
-                        color: isHoliday ? Colors.red : Colors.blue[800],
-                        fontWeight: FontWeight.bold,
-                        fontSize: 14,
+              return GestureDetector(
+                onDoubleTap: () => _handleDoubleTapDay(day),
+                child: Container(
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: Colors.blue.withValues(alpha: 0.1),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Text(
+                        day.day.toString(),
+                        style: TextStyle(
+                          color: isHoliday ? Colors.red : Colors.blue[800],
+                          fontWeight: FontWeight.bold,
+                          fontSize: 14,
+                        ),
                       ),
-                    ),
-                    Text(
-                      lunarDate.getShortDescription().split('月')[1],
-                      style: TextStyle(
-                        fontSize: 10,
-                        color: isHoliday ? Colors.red.withValues(alpha: 0.8) : Colors.blue.shade600,
+                      Text(
+                        lunarDate.getShortDescription().split('月')[1],
+                        style: TextStyle(
+                          fontSize: 10,
+                          color: isHoliday ? Colors.red.withValues(alpha: 0.8) : Colors.blue.shade600,
+                        ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               );
             },
             selectedBuilder: (context, day, focusedDay) {
               final lunarDate = LunarUtils.solarToLunar(day);
-              return Container(
-                alignment: Alignment.center,
-                decoration: BoxDecoration(
-                  color: Colors.blue,
-                  shape: BoxShape.circle,
-                ),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Text(
-                      day.day.toString(),
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.bold,
-                        fontSize: 14,
+              return GestureDetector(
+                onDoubleTap: () => _handleDoubleTapDay(day),
+                child: Container(
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: Colors.blue,
+                    shape: BoxShape.circle,
+                  ),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Text(
+                        day.day.toString(),
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 14,
+                        ),
                       ),
-                    ),
-                    Text(
-                      lunarDate.getShortDescription().split('月')[1],
-                      style: const TextStyle(
-                        fontSize: 10,
-                        color: Colors.white70,
+                      Text(
+                        lunarDate.getShortDescription().split('月')[1],
+                        style: const TextStyle(
+                          fontSize: 10,
+                          color: Colors.white70,
+                        ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               );
             },
             outsideBuilder: (context, day, focusedDay) {
               final lunarDate = LunarUtils.solarToLunar(day);
               bool isHoliday = LunarUtils.isHoliday(day);
-              return Container(
-                alignment: Alignment.center,
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Text(
-                      day.day.toString(),
-                      style: TextStyle(
-                        color: isHoliday ? Colors.red.withValues(alpha: 0.6) : Colors.grey.shade400,
-                        fontSize: 12,
+              return GestureDetector(
+                onDoubleTap: () => _handleDoubleTapDay(day),
+                child: Container(
+                  alignment: Alignment.center,
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Text(
+                        day.day.toString(),
+                        style: TextStyle(
+                          color: isHoliday ? Colors.red.withValues(alpha: 0.6) : Colors.grey.shade400,
+                          fontSize: 12,
+                        ),
                       ),
-                    ),
-                    Text(
-                      lunarDate.getShortDescription().split('月')[1],
-                      style: TextStyle(
-                        fontSize: 8,
-                        color: isHoliday ? Colors.red.withValues(alpha: 0.4) : Colors.grey.shade300,
+                      Text(
+                        lunarDate.getShortDescription().split('月')[1],
+                        style: TextStyle(
+                          fontSize: 8,
+                          color: isHoliday ? Colors.red.withValues(alpha: 0.4) : Colors.grey.shade300,
+                        ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               );
             },
