@@ -1,5 +1,7 @@
 import akshare as ak
 from datetime import datetime
-b=str(20251015)
-a=datetime.strptime(b, "%Y%m%d")
-print(type(a))
+
+df = ak.stock_sector_spot(indicator="新浪行业")
+top5 = df.sort_values('涨跌幅', ascending=False).head(5)
+print(top5)
+print(df.columns.tolist())

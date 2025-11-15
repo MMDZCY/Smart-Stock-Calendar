@@ -88,9 +88,9 @@ async def get_index_data(
                 mask = index_df["date_str"] == target_date_str
                 target_rows = index_df[mask]
                 
-                # 若目标日期无数据，尝试往前推（最多推3天，应对周末/节假日）
+                # 若目标日期无数据，尝试往前推（最多推9天，应对周末/节假日）
                 days_back = 1
-                while target_rows.empty and days_back <= 3:
+                while target_rows.empty and days_back <= 9:
                     prev_date = target_date - timedelta(days=days_back)
                     prev_date_str = prev_date.strftime("%Y-%m-%d")
                     logger.warning(f"指数[{name}]在{target_date_str}无数据，尝试前{days_back}天：{prev_date_str}")
@@ -196,17 +196,34 @@ async def get_industry_data(date: str = None):
         else:
             industry_df = ak.stock_board_industry_summary_ths()
             industry_list = industry_df["板块"].tolist()
-            industry_changes = {}
-    
-            # 1. 将当前日期字符串转换为日期对象（假设date_str格式为"YYYY-MM-DD"）
-            current_date = datetime.strptime(date_str, "%Y%m%d")
-            current_date_str = current_date.strftime("%Y-%m-%d")    
-            # 2. 计算前一天的日期（减去1天）
-            yesterday_date = current_date - timedelta(days=1)
-            
-            # 3. 转换为接口需要的格式（假设需要"YYYYMMDD"，根据实际接口调整）
-            yesterday_str = yesterday_date.strftime("%Y%m%d")  # 前一天（无横线）
             today_str = date_str
+
+            back_day=1
+            while ak.stock_board_industry_index_ths(
+                symbol="银行", 
+                start_date=today_str, 
+                end_date=today_str
+                ).empty:
+                    back_day+=1
+                    current_date = current_date - timedelta(days=back_day)
+                    today_str = current_date.strftime("%Y%m%d")
+            
+            current_date = datetime.strptime(date_str, "%Y%m%d")   
+            yesterday_date = current_date - timedelta(days=1)
+            yesterday_str = yesterday_date.strftime("%Y%m%d")  # 前一天（无横线）
+            
+            back_day=1
+            while ak.stock_board_industry_index_ths(
+                symbol="银行", 
+                start_date=yesterday_str, 
+                end_date=yesterday_str
+                ).empty:
+                    back_day+=1
+                    yesterday_date = yesterday_date - timedelta(days=back_day)
+                    yesterday_str = yesterday_date.strftime("%Y%m%d")  # 前一天（无横线）
+                
+
+ 
             for industry in industry_list:
                 # 当天数据（用当天无横线格式）
                 today_df = ak.stock_board_industry_index_ths(
@@ -220,6 +237,7 @@ async def get_industry_data(date: str = None):
                     start_date=yesterday_str, 
                     end_date=yesterday_str
                 )
+
                 
                 # 避免索引错误（确保数据存在）
                 if not today_df.empty and not yesterday_df.empty:
@@ -230,7 +248,7 @@ async def get_industry_data(date: str = None):
                     sectors.append({
                         "name": industry,
                         "change_percent": round(change, 2),
-                        "date": current_date_str
+                        "date": today_str
                     })
             sectors.sort(key=lambda x: x["change_percent"], reverse=True)
             return {"code": 200, "message": "success", "data": sectors}
@@ -243,62 +261,8 @@ async def get_industry_data(date: str = None):
         raise HTTPException(status_code=500, detail=f"获取行业板块数据失败: {str(e)}")
 
 
-# 获取股票列表接口
-@app.get("/api/stocks")
-async def get_stock_list():
-    """
-    获取股票列表
-    """
-    logger.info("获取股票列表")
-    
-    # 获取A股股票列表
-    stock_list = ak.stock_info_a_code_name()
-    
-    # 返回前50只股票作为示例
-    stocks = []
-    for _, row in stock_list.head(50).iterrows():
-        stocks.append({
-            "code": str(row.get("code", "")),
-            "name": str(row.get("name", "")),
-            "industry": str(row.get("industry", "未知行业"))
-        })
-     
-    logger.info(f"成功获取股票列表，共{len(stocks)}条")
-    return {"code": 200, "message": "success", "data": stocks}
 
-# 获取单只股票数据接口
-@app.get("/api/stock/{code}")
-async def get_stock_data(code: str):
-    """
-    获取单只股票数据
-    """
-    logger.info(f"获取股票数据：{code}")
-    
-    # 获取股票实时数据
-    stock_realtime = ak.stock_zh_a_spot_em()
-    
-    # 查找指定股票
-    stock_info = stock_realtime[stock_realtime['代码'] == code]
-    
-    if len(stock_info) > 0:
-        stock = stock_info.iloc[0]
-        
-        data = {
-            "code": code,
-            "name": str(stock.get("名称", f"股票{code}")),
-            "close": float(stock.get("最新价", 0)),
-            "open": float(stock.get("今开", 0)),
-            "high": float(stock.get("最高", 0)),
-            "low": float(stock.get("最低", 0)),
-            "volume": float(stock.get("成交量", 0)),
-            "change_percent": float(stock.get("涨跌幅", 0))
-        }
-        
-        logger.info(f"成功获取股票{code}数据,使用的是历史数据")
-        return {"code": 200, "message": "success", "data": data}
-    else:
-        logger.warning(f"股票{code}无数据")
-        raise HTTPException(status_code=404, detail=f"股票{code}无数据")
+
 
 if __name__ == "__main__":
     # 启动服务，监听在0.0.0.0:8000
@@ -306,8 +270,7 @@ if __name__ == "__main__":
     logger.info("健康检查地址: http://localhost:8000/health")
     logger.info("指数数据地址: http://localhost:8000/api/index")
     logger.info("行业数据地址: http://localhost:8000/api/industry")
-    logger.info("股票列表地址: http://localhost:8000/api/stocks")
-    logger.info("单只股票地址: http://localhost:8000/api/stock/{code}")
+
 
     
     try:

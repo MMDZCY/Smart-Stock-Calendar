@@ -61,6 +61,9 @@ class _CalendarScreenState extends State<CalendarScreen> with TickerProviderStat
     // 初始化订阅管理器
     _subscriptionManager = SubscriptionManager(_subscriptionsBox, _eventsBox);
     
+    // 初始化通知服务
+    _initNotifications();
+    
     // 安排事件提醒
     _scheduleEventReminders();
     
@@ -77,6 +80,32 @@ class _CalendarScreenState extends State<CalendarScreen> with TickerProviderStat
   
 
   
+  // 初始化通知服务
+  Future<void> _initNotifications() async {
+    const AndroidInitializationSettings androidSettings =
+        AndroidInitializationSettings('@mipmap/ic_launcher');
+    const DarwinInitializationSettings iosSettings =
+        DarwinInitializationSettings();
+    const InitializationSettings settings = InitializationSettings(
+      android: androidSettings,
+      iOS: iosSettings,
+    );
+    
+    await _notifications.initialize(settings);
+    
+    // 创建通知渠道（仅Android）
+    const AndroidNotificationChannel channel = AndroidNotificationChannel(
+      'event_reminder_channel',
+      '事件提醒',
+      description: '日历事件提醒通知',
+      importance: Importance.high,
+    );
+    
+    await _notifications
+        .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()
+        ?.createNotificationChannel(channel);
+  }
+
   // 安排事件提醒
   void _scheduleEventReminders() {
     // 检查通知服务是否已初始化

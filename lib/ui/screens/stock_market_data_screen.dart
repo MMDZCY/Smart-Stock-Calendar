@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'dart:convert';
 import 'dart:async';
-import 'dart:io';
 import 'package:http/http.dart' as http;
 
 // AkShare API服务类
@@ -10,7 +9,7 @@ class AkShareApiService {
   final http.Client client;
 
   AkShareApiService({
-    this.baseUrl = 'http://10.161.183.140:8000',
+    this.baseUrl = 'http://10.161.220.57:8000',
     http.Client? client,
   }) : client = client ?? http.Client();
 
@@ -64,6 +63,9 @@ class AkShareApiService {
 
 
 
+
+
+
   // 检查服务是否可用
   Future<bool> checkServiceAvailability() async {
     try {
@@ -82,140 +84,6 @@ class AkShareApiService {
     client.close();
   }
 
-  // 启动Python服务（移动设备不支持）
-  Future<bool> _startPythonServer() async {
-    print('❌ 移动设备无法直接启动Python服务');
-    print('💡 请在开发机上手动启动Python服务');
-    print('💡 命令: python lib\\akshare_api_server.py');
-    return false;
-  }
-  
-  // 桌面环境启动Python服务（保留原逻辑）
-  Future<bool> _startPythonServerDesktop() async {
-    bool isRunning = false;
-    try {
-      print('🔍 开始启动Python服务流程...');
-      
-      // 首先检查服务是否已经在运行
-      isRunning = await checkServiceAvailability();
-      if (isRunning) {
-        print('✅ Python服务已经在运行');
-        return true;
-      }
-
-      // 获取当前工作目录
-      String currentDir = Directory.current.path;
-      print('📁 当前工作目录: $currentDir');
-      
-      // 构建完整的脚本路径
-      String scriptPath = 'lib/akshare_api_server.py';
-      File scriptFile = File(scriptPath);
-      
-      // 检查脚本文件是否存在
-      if (!await scriptFile.exists()) {
-        print('❌ 脚本文件不存在: $scriptPath');
-        // 尝试使用绝对路径
-        String absoluteScriptPath = '$currentDir\\lib\\akshare_api_server.py';
-        print('🔄 尝试使用绝对路径: $absoluteScriptPath');
-        scriptFile = File(absoluteScriptPath);
-        if (!await scriptFile.exists()) {
-          print('❌ 绝对路径脚本文件也不存在: $absoluteScriptPath');
-          return false;
-        }
-        scriptPath = absoluteScriptPath;
-      }
-      print('✅ 找到脚本文件: $scriptPath');
-      
-      // 验证Python是否可用
-      String pythonCommand = Platform.isWindows ? 'python' : 'python3';
-      try {
-        ProcessResult pythonCheck = await Process.run(pythonCommand, ['--version']);
-        print('✅ Python版本: ${pythonCheck.stdout}${pythonCheck.stderr}');
-      } catch (e) {
-        print('❌ 无法找到Python: $e');
-        // 尝试使用python3作为备选（在某些Windows系统上可能也需要）
-        pythonCommand = 'python3';
-        try {
-          ProcessResult pythonCheck = await Process.run(pythonCommand, ['--version']);
-          print('✅ Python3版本: ${pythonCheck.stdout}${pythonCheck.stderr}');
-        } catch (e) {
-          print('❌ 无法找到Python3: $e');
-          print('💡 请确保Python已正确安装并添加到系统PATH中');
-          return false;
-        }
-      }
-      
-      // 启动Python服务
-      print('🚀 正在启动Python服务...');
-      if (Platform.isWindows) {
-        // Windows系统使用cmd执行Python，添加更多的错误捕获和日志
-        try {
-          // 先尝试获取脚本所在目录
-          String scriptDir = scriptFile.parent.path;
-          print('📂 脚本所在目录: $scriptDir');
-          
-          // 使用完整路径执行Python
-          ProcessResult result = await Process.run(
-            'cmd', 
-            ['/c', 'cd', scriptDir, '&&', 'start', '/B', pythonCommand, scriptFile.path],
-            runInShell: true
-          );
-          print('Windows Python服务启动命令执行结果 - 退出码: ${result.exitCode}');
-          print('命令输出: ${result.stdout}');
-          print('错误输出: ${result.stderr}');
-          
-          // 额外的验证，尝试直接运行Python脚本来检查是否有语法错误
-          try {
-            ProcessResult validateResult = await Process.run(
-              pythonCommand, 
-              ['-c', 'import sys; sys.path.append("$scriptDir"); import akshare_api_server'],
-              runInShell: true
-            );
-            print('✅ Python脚本导入验证通过');
-          } catch (validateError) {
-            print('⚠️ Python脚本导入验证失败: $validateError');
-          }
-        } catch (cmdError) {
-          print('❌ Windows命令执行异常: $cmdError');
-        }
-      } else {
-        // Linux/Mac系统
-        try {
-          String command = '$pythonCommand "$scriptPath" > /dev/null 2>&1 &';
-          ProcessResult result = await Process.run('sh', ['-c', command]);
-          print('Linux/Mac Python服务启动命令执行结果: ${result.exitCode}');
-        } catch (shError) {
-          print('❌ Linux/Mac命令执行异常: $shError');
-        }
-      }
-      
-      // 增加等待时间和重试机制
-      const int maxRetries = 3;
-      const int waitSeconds = 5;
-      
-      for (int retry = 1; retry <= maxRetries; retry++) {
-        print('⏳ 等待Python服务启动 (尝试 $retry/$maxRetries)...');
-        await Future.delayed(Duration(seconds: waitSeconds));
-        
-        // 检查服务是否成功启动
-        isRunning = await checkServiceAvailability();
-        if (isRunning) {
-          print('✅ Python服务启动成功');
-          return true;
-        }
-        print('⚠️ 服务尚未启动，准备重试...');
-      }
-      
-      // 所有重试都失败
-      print('❌ Python服务启动失败，请手动运行: $pythonCommand "$scriptPath"');
-      print('💡 请确保已安装必要的Python依赖: pip install akshare pandas fastapi uvicorn');
-      print('💡 请尝试手动运行脚本以查看详细错误信息');
-    } catch (e) {
-      print('❌ 启动Python服务异常: $e');
-      print('❌ 异常类型: ${e.runtimeType}');
-    }
-    return false;
-  }
 }
 
 
@@ -244,7 +112,7 @@ class _StockMarketDataScreenState extends State<StockMarketDataScreen> {
     // 初始化akshare API服务
     // 移动设备环境下，连接到开发机的Python服务
     _akShareApiService = AkShareApiService(
-      baseUrl: 'http://10.161.183.140:8000', // 您的开发机IP地址
+      baseUrl: 'http://10.161.220.57:8000', // 您的开发机IP地址
     );
     // 移动设备无法直接启动Python服务，跳过自动启动
     // _akShareApiService._startPythonServer();
@@ -314,6 +182,8 @@ class _StockMarketDataScreenState extends State<StockMarketDataScreen> {
         isServiceAvailable = await _akShareApiService.checkServiceAvailability();
       }
       
+      
+      
       // 并行获取指数和板块数据
       final results = await Future.wait([
         _fetchIndicesFromAkShare(widget.selectedDate),
@@ -376,13 +246,7 @@ class _StockMarketDataScreenState extends State<StockMarketDataScreen> {
         return true;
       }
       
-      // 检查是否是交易日，如果不是则使用上一个交易日
       DateTime actualDate = targetDate;
-      if (!_isTradingDay(targetDate)) {
-        print('⚠️ ${targetDate.year}-${targetDate.month}-${targetDate.day} 不是交易日，查找上一个交易日');
-        actualDate = _getPreviousTradingDay(targetDate);
-        print('📅 使用上一个交易日数据: ${actualDate.year}-${actualDate.month}-${actualDate.day}');
-      }
       
       print('📊 正在尝试使用AkShare API获取三大指数数据...');
       _initializeIndices();
@@ -451,13 +315,7 @@ class _StockMarketDataScreenState extends State<StockMarketDataScreen> {
         return true;
       }
       
-      // 检查是否是交易日，如果不是则使用上一个交易日
       DateTime actualDate = targetDate;
-      if (!_isTradingDay(targetDate)) {
-        print('⚠️ ${targetDate.year}-${targetDate.month}-${targetDate.day} 不是交易日，查找上一个交易日');
-        actualDate = _getPreviousTradingDay(targetDate);
-        print('📅 使用上一个交易日数据: ${actualDate.year}-${actualDate.month}-${actualDate.day}');
-      }
       
       print('🏢 正在使用AkShare API获取行业板块数据...');
       
@@ -529,76 +387,7 @@ class _StockMarketDataScreenState extends State<StockMarketDataScreen> {
 
 
 
-  // 检查是否为交易日
-  bool _isTradingDay(DateTime date) {
-    // 周末不是交易日
-    if (date.weekday == DateTime.saturday || date.weekday == DateTime.sunday) {
-      print('⚠️ ${date.year}-${date.month}-${date.day} 是周末，不是交易日');
-      return false;
-    }
-    
-    // 简单检查一些主要节假日
-    int month = date.month;
-    int day = date.day;
-    
-    // 元旦
-    if (month == 1 && day == 1) {
-      print('⚠️ ${date.year}-${date.month}-${date.day} 是元旦，不是交易日');
-      return false;
-    }
-    
-    // 春节 (简化处理，实际需要更复杂的农历计算)
-    if (month == 2 && (day >= 10 && day <= 17)) {
-      print('⚠️ ${date.year}-${date.month}-${date.day} 可能是春节期间，不是交易日');
-      return false;
-    }
-    
-    // 国庆节
-    if (month == 10 && (day >= 1 && day <= 7)) {
-      print('⚠️ ${date.year}-${date.month}-${date.day} 是国庆节期间，不是交易日');
-      return false;
-    }
-    
-    print('✅ ${date.year}-${date.month}-${date.day} 是交易日');
-    return true;
-  }
-  
-  // 获取上一个交易日
-  DateTime _getPreviousTradingDay(DateTime date) {
-    DateTime previousDay = DateTime(date.year, date.month, date.day).subtract(const Duration(days: 1));
-    
-    // 最多查找7天，确保能找到上一个交易日
-    for (int i = 0; i < 7; i++) {
-      if (_isTradingDay(previousDay)) {
-        print('✅ 找到上一个交易日: ${previousDay.year}-${previousDay.month}-${previousDay.day}');
-        return previousDay;
-      }
-      previousDay = previousDay.subtract(const Duration(days: 1));
-    }
-    
-    // 如果7天内都找不到交易日，返回原始日期
-    print('⚠️ 7天内未找到交易日，使用原始日期');
-    return date;
-  }
-  
-  // 检查日期是否是最近的交易日
-  bool _isRecentTradingDay(DateTime date) {
-    DateTime now = DateTime.now();
-    DateTime today = DateTime(now.year, now.month, now.day);
-    DateTime targetDate = DateTime(date.year, date.month, date.day);
-    
-    // 计算日期差
-    int daysDifference = today.difference(targetDate).inDays;
-    
-    // 如果日期差超过7天，可能不是最近的交易日
-    if (daysDifference > 7) {
-      print('⚠️ ${date.year}-${date.month}-${date.day} 距离今天超过7天，可能不是最近的交易日');
-      return false;
-    }
-    
-    print('✅ ${date.year}-${date.month}-${date.day} 是最近的交易日');
-    return true;
-  }
+
   
   // 获取星期几的中文表示
   String _getWeekday(int weekday) {
@@ -676,9 +465,6 @@ class _StockMarketDataScreenState extends State<StockMarketDataScreen> {
   }
   @override
   Widget build(BuildContext context) {
-    // 获取交易日状态
-    bool isTradingDay = _isTradingDay(widget.selectedDate);
-    
     // 格式化日期显示
     String formattedDate = "${widget.selectedDate.year}年${widget.selectedDate.month}月${widget.selectedDate.day}日";
     String weekday = _getWeekday(widget.selectedDate.weekday);
@@ -703,7 +489,19 @@ class _StockMarketDataScreenState extends State<StockMarketDataScreen> {
         ],
       ),
       body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
+          ? Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const CircularProgressIndicator(),
+                  const SizedBox(height: 16),
+                  const Text(
+                    '正在加载请稍后',
+                    style: TextStyle(fontSize: 16, color: Colors.grey),
+                  ),
+                ],
+              ),
+            )
           : _dataFetchFailed
             ? Center(
                 child: Column(
@@ -750,20 +548,7 @@ class _StockMarketDataScreenState extends State<StockMarketDataScreen> {
                     const SizedBox(height: 8),
                     Text("星期$weekday", style: TextStyle(fontSize: 16, color: Colors.grey[700])),
                     const SizedBox(height: 8),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                      decoration: BoxDecoration(
-                        color: isTradingDay ? Colors.green.shade100 : Colors.grey.shade100,
-                        borderRadius: BorderRadius.circular(16),
-                      ),
-                      child: Text(
-                        isTradingDay ? "交易日" : "非交易日",
-                        style: TextStyle(
-                          color: isTradingDay ? Colors.green[700] : Colors.grey[700],
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ),
+
                   ],
                 ),
               ),
