@@ -419,7 +419,69 @@ class _StockMarketDataScreenState extends State<StockMarketDataScreen> {
     }
   }
   
-  // 构建指数行
+  // 构建现代化的指数行
+  Widget _buildModernIndexRow(String name, String value, String change, Color changeColor) {
+    return Row(
+      children: [
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                name,
+                style: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.white70,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                value,
+                style: const TextStyle(
+                  fontSize: 24,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.white,
+                ),
+              ),
+            ],
+          ),
+        ),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          decoration: BoxDecoration(
+            color: changeColor.withOpacity(0.2),
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(
+              color: changeColor.withOpacity(0.3),
+              width: 1,
+            ),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                change.startsWith('+') ? Icons.trending_up : Icons.trending_down,
+                size: 16,
+                color: changeColor,
+              ),
+              const SizedBox(width: 4),
+              Text(
+                change,
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.bold,
+                  color: changeColor,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  // 构建传统的指数行（保留作为备选）
   Widget _buildIndexRow(String name, String value, String change, Color changeColor) {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -440,7 +502,52 @@ class _StockMarketDataScreenState extends State<StockMarketDataScreen> {
     );
   }
   
-  // 构建板块行
+  // 构建现代化的板块行
+  Widget _buildModernSectorRow(String name, String change, bool isPositive) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      margin: const EdgeInsets.only(bottom: 8),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: Colors.white.withOpacity(0.15),
+          width: 1,
+        ),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              name,
+              style: const TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w500,
+                color: Colors.white,
+              ),
+            ),
+          ),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            decoration: BoxDecoration(
+              color: (isPositive ? Colors.red : Colors.green).withOpacity(0.2),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Text(
+              change,
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.bold,
+                color: isPositive ? Colors.red[300] : Colors.green[300],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // 构建传统的板块行
   Widget _buildSectorRow(String name, String change) {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -455,7 +562,39 @@ class _StockMarketDataScreenState extends State<StockMarketDataScreen> {
     );
   }
   
-  // 构建板块列表
+  // 构建现代化的板块列表
+  List<Widget> _buildModernSectorList(List<Map<String, dynamic>> sectors) {
+    if (sectors.isEmpty) {
+      return [
+        Container(
+          padding: const EdgeInsets.all(32),
+          child: const Text(
+            "暂无数据",
+            style: TextStyle(color: Colors.white54, fontSize: 16),
+            textAlign: TextAlign.center,
+          ),
+        ),
+      ];
+    }
+    
+    return sectors.asMap().entries.map((entry) {
+      int index = entry.key;
+      Map<String, dynamic> sector = entry.value;
+      bool isPositive = sector['change'].toString().startsWith("+");
+      
+      return AnimatedContainer(
+        duration: Duration(milliseconds: 300 + index * 100),
+        curve: Curves.easeOut,
+        child: _buildModernSectorRow(
+          sector['name'],
+          sector['change'],
+          isPositive,
+        ),
+      );
+    }).toList();
+  }
+
+  // 构建传统的板块列表
   List<Widget> _buildSectorList(List<Map<String, dynamic>> sectors) {
     if (sectors.isEmpty) {
       return [
@@ -486,176 +625,445 @@ class _StockMarketDataScreenState extends State<StockMarketDataScreen> {
     String weekday = _getWeekday(widget.selectedDate.weekday);
     
     return Scaffold(
+      extendBodyBehindAppBar: true,
       appBar: AppBar(
-        title: const Text('行情数据'),
-        backgroundColor: Colors.blue,
+        title: const Text(
+          '市场概览',
+          style: TextStyle(
+            fontWeight: FontWeight.bold,
+            color: Colors.white,
+          ),
+        ),
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        flexibleSpace: Container(
+          decoration: const BoxDecoration(
+            gradient: LinearGradient(
+              colors: [
+                Color(0xFF667eea),
+                Color(0xFF764ba2),
+              ],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+          ),
+        ),
         actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            onPressed: () {
-              if (mounted) {
-                setState(() {
-                  _isLoading = true;
-                  _dataFetchFailed = false;
-                });
-              }
-              _loadStockData();
-            },
+          Container(
+            margin: const EdgeInsets.only(right: 16),
+            child: IconButton(
+              icon: Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.2),
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: const Icon(Icons.refresh, color: Colors.white),
+              ),
+              onPressed: () {
+                if (mounted) {
+                  setState(() {
+                    _isLoading = true;
+                    _dataFetchFailed = false;
+                  });
+                }
+                _loadStockData();
+              },
+            ),
           ),
         ],
       ),
-      // 移除全屏加载状态，使用渐进式加载
       body: _dataFetchFailed
-            ? Center(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    const Icon(Icons.error_outline, size: 64, color: Colors.red),
-                    const SizedBox(height: 16),
-                    Text(
-                      _errorMessage,
-                      style: const TextStyle(fontSize: 18, color: Colors.red),
-                      textAlign: TextAlign.center,
-                    ),
-                    const SizedBox(height: 24),
-                    ElevatedButton(
-                      onPressed: () {
-                        setState(() {
-                          _isLoading = true;
-                          _dataFetchFailed = false;
-                        });
-                        _loadStockData();
-                      },
-                      child: const Text('重新获取数据'),
-                    ),
+          ? Container(
+              decoration: const BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [
+                    Color(0xFF0f0c29),
+                    Color(0xFF302b63),
+                    Color(0xFF24243e),
                   ],
-                ),
-              )
-            : SingleChildScrollView(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // 日期信息卡片
-            Card(
-              elevation: 4,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Padding(
-                padding: const EdgeInsets.all(16.0),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(formattedDate, style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
-                    const SizedBox(height: 8),
-                    Text("星期$weekday", style: TextStyle(fontSize: 16, color: Colors.grey[700])),
-                    const SizedBox(height: 8),
-
-                  ],
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
                 ),
               ),
-            ),
-            
-            const SizedBox(height: 24),
-            
-            // 主要指数数据
-            const Text("主要指数数据", style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 12),
-            Card(
-              elevation: 2,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Padding(
-                padding: const EdgeInsets.all(16.0),
-                child: Column(
-                  children: [
-                    for (int i = 0; i < _majorIndices.length; i++)
-                      Column(
-                        children: [
-                          _buildIndexRow(
-                            _majorIndices[i]['name'],
-                            _majorIndices[i]['value'],
-                            _majorIndices[i]['change'],
-                            _majorIndices[i]['changeColor'],
-                          ),
-                          if (i < _majorIndices.length - 1) const Divider(),
-                        ],
-                      ),
-                  ],
-                ),
-              ),
-            ),
-            
-            const SizedBox(height: 24),
-            
-            // 行业板块
-            const Text("热门概念板块", style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 12),
-            Card(
-              elevation: 2,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Padding(
-                padding: const EdgeInsets.all(16.0),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    if (_hotSectors.isEmpty && !_dataFetchFailed)
-                      Column(
-                        children: [
-                          const SizedBox(height: 20),
-                          const CircularProgressIndicator(),
-                          const SizedBox(height: 8),
-                          const Text(
-                            "概念板块数据获取中...",
-                            style: TextStyle(color: Colors.grey, fontSize: 16),
-                            textAlign: TextAlign.center,
-                          ),
-                        ],
-                      ),
-                    if (_hotSectors.isEmpty && _dataFetchFailed)
-                      const Text(
-                        "概念板块数据获取失败",
-                        style: TextStyle(color: Colors.red, fontSize: 16),
+              child: Center(
+                child: Container(
+                  margin: const EdgeInsets.all(24),
+                  padding: const EdgeInsets.all(32),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: Colors.white.withOpacity(0.2)),
+                  ),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.error_outline, size: 64, color: Colors.red[300]),
+                      const SizedBox(height: 16),
+                      Text(
+                        _errorMessage,
+                        style: const TextStyle(fontSize: 18, color: Colors.white),
                         textAlign: TextAlign.center,
                       ),
-                    if (_hotSectors.isNotEmpty) ...[
-                      // 涨跌幅最高的前五个板块
-                      Text(
-                        "涨跌幅榜",
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.red[700],
+                      const SizedBox(height: 24),
+                      ElevatedButton(
+                        onPressed: () {
+                          setState(() {
+                            _isLoading = true;
+                            _dataFetchFailed = false;
+                          });
+                          _loadStockData();
+                        },
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.red[600],
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 12),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(25),
+                          ),
                         ),
+                        child: const Text('重新获取数据'),
                       ),
-                      const SizedBox(height: 8),
-                      ..._buildSectorList(_hotSectors.where((sector) => sector['type'] == 'top_performer').toList()),
-                      
-                      const SizedBox(height: 16),
-                      
-                      // 涨跌幅最差的前五个板块
-                      Text(
-                        "------------------------",
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                          color: const Color.fromARGB(255, 221, 207, 4),
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      ..._buildSectorList(_hotSectors.where((sector) => sector['type'] == 'worst_performer').toList()),
                     ],
+                  ),
+                ),
+              ),
+            )
+          : Container(
+              decoration: const BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [
+                    Color(0xFF0f0c29),
+                    Color(0xFF302b63),
+                    Color(0xFF24243e),
+                  ],
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                ),
+              ),
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.fromLTRB(20, 100, 20, 20),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // 现代化的日期信息卡片
+                    AnimatedContainer(
+                      duration: const Duration(milliseconds: 800),
+                      curve: Curves.easeOut,
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(24),
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          colors: [
+                            Colors.white.withOpacity(0.15),
+                            Colors.white.withOpacity(0.1),
+                          ],
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                        ),
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(color: Colors.white.withOpacity(0.2)),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.3),
+                            blurRadius: 20,
+                            offset: const Offset(0, 8),
+                          ),
+                        ],
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Icon(
+                                Icons.calendar_today,
+                                color: Colors.blue[400],
+                                size: 28,
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      formattedDate,
+                                      style: const TextStyle(
+                                        fontSize: 28,
+                                        fontWeight: FontWeight.bold,
+                                        color: Colors.white,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 8),
+                                    Row(
+                                      children: [
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                                          decoration: BoxDecoration(
+                                            color: Colors.white.withOpacity(0.2),
+                                            borderRadius: BorderRadius.circular(12),
+                                          ),
+                                          child: Text(
+                                            "星期$weekday",
+                                            style: const TextStyle(
+                                              fontSize: 16,
+                                              color: Colors.white70,
+                                            ),
+                                          ),
+                                        ),
+                                        const SizedBox(width: 12),
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                                          decoration: BoxDecoration(
+                                            color: Colors.green.withOpacity(0.2),
+                                            borderRadius: BorderRadius.circular(12),
+                                          ),
+                                          child: const Text(
+                                            "交易日",
+                                            style: TextStyle(
+                                              fontSize: 14,
+                                              color: Colors.green,
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                    
+                    const SizedBox(height: 24),
+                    
+                    // 现代化的主要指数数据卡片
+                    AnimatedContainer(
+                      duration: const Duration(milliseconds: 1000),
+                      curve: Curves.easeOut,
+                      padding: const EdgeInsets.all(24),
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          colors: [
+                            Colors.white.withOpacity(0.15),
+                            Colors.white.withOpacity(0.1),
+                          ],
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                        ),
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(color: Colors.white.withOpacity(0.2)),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.3),
+                            blurRadius: 20,
+                            offset: const Offset(0, 8),
+                          ),
+                        ],
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Icon(
+                                Icons.trending_up,
+                                color: Colors.green[400],
+                                size: 24,
+                              ),
+                              const SizedBox(width: 8),
+                              const Text(
+                                "主要指数",
+                                style: TextStyle(
+                                  fontSize: 22,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.white,
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 20),
+                          for (int i = 0; i < _majorIndices.length; i++)
+                            AnimatedContainer(
+                              duration: Duration(milliseconds: 300 + i * 100),
+                              curve: Curves.easeOut,
+                              margin: const EdgeInsets.only(bottom: 16),
+                              padding: const EdgeInsets.all(16),
+                              decoration: BoxDecoration(
+                                color: Colors.white.withOpacity(0.1),
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(color: Colors.white.withOpacity(0.15)),
+                              ),
+                              child: _buildModernIndexRow(
+                                _majorIndices[i]['name'],
+                                _majorIndices[i]['value'],
+                                _majorIndices[i]['change'],
+                                _majorIndices[i]['changeColor'],
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                    
+                    const SizedBox(height: 24),
+                    
+                    // 现代化的热门概念板块卡片
+                    AnimatedContainer(
+                      duration: const Duration(milliseconds: 1200),
+                      curve: Curves.easeOut,
+                      padding: const EdgeInsets.all(24),
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          colors: [
+                            Colors.white.withOpacity(0.15),
+                            Colors.white.withOpacity(0.1),
+                          ],
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                        ),
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(color: Colors.white.withOpacity(0.2)),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.3),
+                            blurRadius: 20,
+                            offset: const Offset(0, 8),
+                          ),
+                        ],
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Icon(
+                                Icons.dashboard,
+                                color: Colors.blue[400],
+                                size: 24,
+                              ),
+                              const SizedBox(width: 8),
+                              const Text(
+                                "热门概念板块",
+                                style: TextStyle(
+                                  fontSize: 22,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.white,
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 20),
+                          if (_hotSectors.isEmpty && !_dataFetchFailed)
+                            Container(
+                              padding: const EdgeInsets.all(32),
+                              child: Column(
+                                children: [
+                                  CircularProgressIndicator(
+                                    valueColor: AlwaysStoppedAnimation<Color>(Colors.blue[400]!),
+                                  ),
+                                  const SizedBox(height: 16),
+                                  Text(
+                                    "板块数据获取中...",
+                                    style: TextStyle(
+                                      color: Colors.white70,
+                                      fontSize: 16,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          if (_hotSectors.isEmpty && _dataFetchFailed)
+                            Container(
+                              padding: const EdgeInsets.all(32),
+                              child: Column(
+                                children: [
+                                  Icon(
+                                    Icons.error_outline,
+                                    size: 48,
+                                    color: Colors.red[400],
+                                  ),
+                                  const SizedBox(height: 16),
+                                  Text(
+                                    "概念板块数据获取失败",
+                                    style: TextStyle(
+                                      color: Colors.red[300],
+                                      fontSize: 16,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          if (_hotSectors.isNotEmpty) ...[
+                            // 涨跌幅最高的前五个板块
+                            Container(
+                              padding: const EdgeInsets.all(16),
+                              decoration: BoxDecoration(
+                                color: Colors.red.withOpacity(0.2),
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: Row(
+                                children: [
+                                  Icon(
+                                    Icons.trending_up,
+                                    color: Colors.red[400],
+                                    size: 20,
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Text(
+                                    "涨幅榜",
+                                    style: TextStyle(
+                                      fontSize: 18,
+                                      fontWeight: FontWeight.bold,
+                                      color: Colors.red[300],
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(height: 12),
+                            ..._buildModernSectorList(_hotSectors.where((sector) => sector['type'] == 'top_performer').toList()),
+                            
+                            const SizedBox(height: 20),
+                            
+                            // 涨跌幅最差的前五个板块
+                            Container(
+                              padding: const EdgeInsets.all(16),
+                              decoration: BoxDecoration(
+                                color: Colors.green.withOpacity(0.2),
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: Row(
+                                children: [
+                                  Icon(
+                                    Icons.trending_down,
+                                    color: Colors.green[400],
+                                    size: 20,
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Text(
+                                    "跌幅榜",
+                                    style: TextStyle(
+                                      fontSize: 18,
+                                      fontWeight: FontWeight.bold,
+                                      color: Colors.green[300],
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(height: 12),
+                            ..._buildModernSectorList(_hotSectors.where((sector) => sector['type'] == 'worst_performer').toList()),
+                          ],
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 40),
                   ],
                 ),
               ),
             ),
-          ],
-        ),
-      ),
     );
   }
 }
