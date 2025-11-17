@@ -214,7 +214,7 @@ class _SubscriptionManagementScreenState extends State<SubscriptionManagementScr
   }
   
   void _addSubscription() async {
-    if (_formKey.currentState!.validate()) {
+    if (_formKey.currentState != null && _formKey.currentState!.validate()) {
       try {
         await widget.subscriptionManager.addSubscription(
           name: _nameController.text,

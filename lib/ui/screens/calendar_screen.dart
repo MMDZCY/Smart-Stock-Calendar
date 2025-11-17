@@ -514,139 +514,294 @@ class _CalendarScreenState extends State<CalendarScreen> with TickerProviderStat
           onMonthSelected: _handleMonthSelected,
         );
       case 1: // 月视图
-        return TableCalendar(
-          firstDay: DateTime(2000),
-          lastDay: DateTime(2050),
-          focusedDay: _focusedDay,
-          selectedDayPredicate: (day) => isSameDay(_selectedDay, day),
-          calendarFormat: CalendarFormat.month,
-          availableCalendarFormats: const {CalendarFormat.month: '月'},
-          
-          calendarStyle: const CalendarStyle(),
-          
-          // 头部样式 
-          headerStyle: const HeaderStyle(
-            formatButtonVisible: false,
-            titleCentered: true,
-            titleTextStyle: TextStyle(color: Colors.black, fontSize: 18, fontWeight: FontWeight.bold),
-            leftChevronIcon: Icon(Icons.chevron_left, color: Colors.black),
-            rightChevronIcon: Icon(Icons.chevron_right, color: Colors.black),
-            decoration: BoxDecoration(
-              color: Colors.transparent,
-              border: Border(bottom: BorderSide(color: Color(0xFFE0E0E0), width: 1)),
-            ),
-            leftChevronMargin: EdgeInsets.only(left: 8),
-            rightChevronMargin: EdgeInsets.only(right: 8),
-            headerMargin: EdgeInsets.symmetric(vertical: 12),
+        return Container(
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(20),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.grey.withOpacity(0.1),
+                spreadRadius: 5,
+                blurRadius: 15,
+                offset: const Offset(0, 5),
+              ),
+            ],
           ),
-          
-          
-          // 星期
-          daysOfWeekStyle: const DaysOfWeekStyle(
-            weekdayStyle: TextStyle(color: Colors.black, fontWeight: FontWeight.bold),
-            weekendStyle: TextStyle(color: Colors.red, fontWeight: FontWeight.bold),
-            decoration: BoxDecoration(
-              color: Colors.transparent,
+          child: TableCalendar(
+            firstDay: DateTime(2000),
+            lastDay: DateTime(2050),
+            focusedDay: _focusedDay,
+            selectedDayPredicate: (day) => isSameDay(_selectedDay, day),
+            calendarFormat: CalendarFormat.month,
+            availableCalendarFormats: const {CalendarFormat.month: '月'},
+            
+            calendarStyle: CalendarStyle(
+              cellPadding: const EdgeInsets.all(4),
+              todayDecoration: BoxDecoration(
+                color: Colors.transparent,
+                shape: BoxShape.circle,
+                border: Border.all(color: const Color(0xFF6366F1), width: 2),
+              ),
+              selectedDecoration: BoxDecoration(
+                color: const Color(0xFF6366F1),
+                shape: BoxShape.circle,
+                boxShadow: [
+                  BoxShadow(
+                    color: const Color(0xFF6366F1).withOpacity(0.3),
+                    blurRadius: 8,
+                    offset: const Offset(0, 3),
+                  ),
+                ],
+              ),
+              weekendTextStyle: const TextStyle(color: Colors.red, fontWeight: FontWeight.w600),
+              defaultTextStyle: const TextStyle(
+                color: Color(0xFF374151),
+                fontWeight: FontWeight.w500,
+                fontSize: 16,
+              ),
+              todayTextStyle: const TextStyle(
+                color: Color(0xFF6366F1),
+                fontWeight: FontWeight.w600,
+                fontSize: 16,
+              ),
+              selectedTextStyle: const TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.w600,
+                fontSize: 16,
+              ),
+              outsideTextStyle: TextStyle(
+                color: Colors.grey.shade400,
+                fontSize: 14,
+              ),
             ),
-          ),
-          
-          onDaySelected: (selectedDay, focusedDay) {
-            if (!isSameDay(_selectedDay, selectedDay)) {
-              setState(() {
-                _selectedDay = selectedDay;
-                _focusedDay = focusedDay;
-              });
-            }
-          },
-          onPageChanged: (focusedDay) => _focusedDay = focusedDay,
-          eventLoader: _getEventsForDay,
-          calendarBuilders: CalendarBuilders(
-            defaultBuilder: (context, day, focusedDay) {
-              bool isHoliday = LunarUtils.isHoliday(day);
-              return GestureDetector(
-                onDoubleTap: () => _handleDoubleTapDay(day),
-                child: Container(
+            
+            // 现代风格头部样式
+            headerStyle: HeaderStyle(
+              formatButtonVisible: false,
+              titleCentered: true,
+              titleTextStyle: const TextStyle(
+                color: Color(0xFF1F2937),
+                fontSize: 20,
+                fontWeight: FontWeight.w700,
+              ),
+              leftChevronIcon: Container(
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF3F4F6),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(Icons.chevron_left, color: Color(0xFF374151), size: 24),
+              ),
+              rightChevronIcon: Container(
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF3F4F6),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(Icons.chevron_right, color: Color(0xFF374151), size: 24),
+              ),
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(
+                  colors: [Color(0xFFFAFAFA), Color(0xFFF9FAFB)],
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                ),
+                borderRadius: const BorderRadius.only(
+                  topLeft: Radius.circular(20),
+                  topRight: Radius.circular(20),
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.grey.withOpacity(0.1),
+                    blurRadius: 10,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
+              ),
+              leftChevronMargin: const EdgeInsets.only(left: 12),
+              rightChevronMargin: const EdgeInsets.only(right: 12),
+              headerMargin: const EdgeInsets.symmetric(vertical: 16),
+            ),
+            
+            // 美化的星期栏
+            daysOfWeekStyle: DaysOfWeekStyle(
+              weekdayStyle: const TextStyle(
+                color: Color(0xFF6B7280),
+                fontWeight: FontWeight.w600,
+                fontSize: 14,
+              ),
+              weekendStyle: const TextStyle(
+                color: Colors.red,
+                fontWeight: FontWeight.w600,
+                fontSize: 14,
+              ),
+              decoration: const BoxDecoration(
+                color: Color(0xFFF9FAFB),
+              ),
+            ),
+            
+            onDaySelected: (selectedDay, focusedDay) {
+              if (!isSameDay(_selectedDay, selectedDay)) {
+                setState(() {
+                  _selectedDay = selectedDay;
+                  _focusedDay = focusedDay;
+                });
+              }
+            },
+            onPageChanged: (focusedDay) => _focusedDay = focusedDay,
+            eventLoader: _getEventsForDay,
+            
+            // 精美的日历构建器
+            calendarBuilders: CalendarBuilders(
+              defaultBuilder: (context, day, focusedDay) {
+                bool isHoliday = LunarUtils.isHoliday(day);
+                return GestureDetector(
+                  onDoubleTap: () => _handleDoubleTapDay(day),
+                  child: Container(
+                    margin: const EdgeInsets.all(2),
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(8),
+                      color: isSameDay(_selectedDay, day) 
+                        ? const Color(0xFF6366F1) 
+                        : Colors.transparent,
+                    ),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Text(
+                          day.day.toString(),
+                          style: TextStyle(
+                            color: isSameDay(_selectedDay, day) 
+                              ? Colors.white 
+                              : (isHoliday ? Colors.red : const Color(0xFF374151)),
+                            fontWeight: FontWeight.w600,
+                            fontSize: 16,
+                          ),
+                        ),
+                        if (isHoliday)
+                          Container(
+                            margin: const EdgeInsets.only(top: 2),
+                            width: 4,
+                            height: 4,
+                            decoration: BoxDecoration(
+                              color: Colors.red,
+                              shape: BoxShape.circle,
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                );
+              },
+              todayBuilder: (context, day, focusedDay) {
+                bool isHoliday = LunarUtils.isHoliday(day);
+                return GestureDetector(
+                  onDoubleTap: () => _handleDoubleTapDay(day),
+                  child: Container(
+                    margin: const EdgeInsets.all(2),
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: const Color(0xFF6366F1), width: 2),
+                      color: Colors.transparent,
+                    ),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Text(
+                          day.day.toString(),
+                          style: TextStyle(
+                            color: isHoliday ? Colors.red : const Color(0xFF6366F1),
+                            fontWeight: FontWeight.w700,
+                            fontSize: 16,
+                          ),
+                        ),
+                        if (isHoliday)
+                          Container(
+                            margin: const EdgeInsets.only(top: 2),
+                            width: 4,
+                            height: 4,
+                            decoration: BoxDecoration(
+                              color: Colors.red,
+                              shape: BoxShape.circle,
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                );
+              },
+              selectedBuilder: (context, day, focusedDay) {
+                return GestureDetector(
+                  onDoubleTap: () => _handleDoubleTapDay(day),
+                  child: Container(
+                    margin: const EdgeInsets.all(2),
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(8),
+                      color: const Color(0xFF6366F1),
+                      boxShadow: [
+                        BoxShadow(
+                          color: const Color(0xFF6366F1).withOpacity(0.3),
+                          blurRadius: 8,
+                          offset: const Offset(0, 3),
+                        ),
+                      ],
+                    ),
+                    child: Text(
+                      day.day.toString(),
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w700,
+                        fontSize: 16,
+                      ),
+                    ),
+                  ),
+                );
+              },
+              outsideBuilder: (context, day, focusedDay) {
+                bool isHoliday = LunarUtils.isHoliday(day);
+                return GestureDetector(
+                  onDoubleTap: () => _handleDoubleTapDay(day),
+                  child: Container(
+                    margin: const EdgeInsets.all(2),
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(8),
+                      color: Colors.transparent,
+                    ),
+                    child: Text(
+                      day.day.toString(),
+                      style: TextStyle(
+                        color: isHoliday 
+                          ? Colors.red.withOpacity(0.6) 
+                          : Colors.grey.shade400,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w400,
+                      ),
+                    ),
+                  ),
+                );
+              },
+              // 精美的星期标题
+              dowBuilder: (context, date) {
+                final int weekday = date.weekday % 7;
+                final List<String> weekdays = ['日', '一', '二', '三', '四', '五', '六'];
+                return Container(
                   alignment: Alignment.center,
+                  padding: const EdgeInsets.symmetric(vertical: 8),
                   child: Text(
-                    day.day.toString(),
+                    weekdays[weekday],
                     style: TextStyle(
-                      color: isSameDay(_selectedDay, day) ? Colors.white : (isHoliday ? Colors.red : Colors.black),
-                      fontWeight: FontWeight.bold,
+                      color: weekday == 0 || weekday == 6 
+                        ? Colors.red 
+                        : const Color(0xFF6B7280),
+                      fontWeight: FontWeight.w700,
+                      fontSize: 14,
                     ),
                   ),
-                ),
-              );
-            },
-            todayBuilder: (context, day, focusedDay) {
-              bool isHoliday = LunarUtils.isHoliday(day);
-              return GestureDetector(
-                onDoubleTap: () => _handleDoubleTapDay(day),
-                child: Container(
-                  alignment: Alignment.center,
-                  decoration: BoxDecoration(
-                    color: Colors.blue.withValues(alpha: 0.1),
-                    shape: BoxShape.circle,
-                  ),
-                  child: Text(
-                    day.day.toString(),
-                    style: TextStyle(
-                      color: isHoliday ? Colors.red : Colors.blue[800],
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ),
-              );
-            },
-            selectedBuilder: (context, day, focusedDay) {
-              return GestureDetector(
-                onDoubleTap: () => _handleDoubleTapDay(day),
-                child: Container(
-                  alignment: Alignment.center,
-                  decoration: BoxDecoration(
-                    color: Colors.blue,
-                    shape: BoxShape.circle,
-                  ),
-                  child: Text(
-                    day.day.toString(),
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ),
-              );
-            },
-            outsideBuilder: (context, day, focusedDay) {
-              bool isHoliday = LunarUtils.isHoliday(day);
-              return GestureDetector(
-                onDoubleTap: () => _handleDoubleTapDay(day),
-                child: Container(
-                  alignment: Alignment.center,
-                  child: Text(
-                    day.day.toString(),
-                    style: TextStyle(
-                      color: isHoliday ? Colors.red.withValues(alpha: 0.6) : Colors.grey.shade400,
-                      fontSize: 12,
-                    ),
-                  ),
-                ),
-              );
-            },
-            // 自定义星期标题显示为中文
-            dowBuilder: (context, date) {
-              // 获取星期几（0-6，0是周日）
-              final int weekday = date.weekday % 7;
-              final List<String> weekdays = ['日', '一', '二', '三', '四', '五', '六'];
-              return Container(
-                alignment: Alignment.center,
-                child: Text(
-                  weekdays[weekday],
-                  style: weekday == 0 || weekday == 6 
-                    ? const TextStyle(color: Colors.red, fontWeight: FontWeight.bold)
-                    : const TextStyle(color: Colors.black, fontWeight: FontWeight.bold),
-                ),
-              );
-            },
+                );
+              },
+            ),
           ),
         );
       case 2: // 周视图

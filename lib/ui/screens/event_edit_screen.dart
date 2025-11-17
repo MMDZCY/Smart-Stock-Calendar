@@ -63,7 +63,7 @@ class _EventEditScreenState extends State<EventEditScreen> {
   }
 
   void _saveEvent() {
-    if (_formKey.currentState!.validate()) {
+    if (_formKey.currentState != null && _formKey.currentState!.validate()) {
       final event = Event(
         id: widget.event?.id ?? DateTime.now().microsecondsSinceEpoch.toString(),
         title: _titleController.text,
