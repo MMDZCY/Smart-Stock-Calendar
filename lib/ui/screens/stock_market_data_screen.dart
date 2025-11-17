@@ -116,6 +116,11 @@ class _StockMarketDataScreenState extends State<StockMarketDataScreen> {
     );
     // 移动设备无法直接启动Python服务，跳过自动启动
     // _akShareApiService._startPythonServer();
+    
+    // 先初始化基础数据，显示页面框架
+    _initializeBasicData();
+    
+    // 然后开始加载数据
     _loadStockData();
     
     // 移除自动定时刷新，只在页面加载时获取一次数据
@@ -130,6 +135,24 @@ class _StockMarketDataScreenState extends State<StockMarketDataScreen> {
     super.dispose();
   }
 
+
+  // 初始化基础数据，显示页面框架
+  void _initializeBasicData() {
+    if (mounted) {
+      setState(() {
+        _majorIndices = [
+          {'name': '上证指数', 'value': '加载中...', 'change': '--', 'changeColor': Colors.grey},
+          {'name': '深证成指', 'value': '加载中...', 'change': '--', 'changeColor': Colors.grey},
+          {'name': '创业板指', 'value': '加载中...', 'change': '--', 'changeColor': Colors.grey},
+        ];
+        _hotSectors = [
+          {'name': '概念板块数据获取中...', 'change': '--', 'changeColor': Colors.grey, 'type': 'loading'},
+        ];
+        _isLoading = false; // 显示页面框架，不显示全屏加载
+        _dataFetchFailed = false;
+      });
+    }
+  }
 
   Future<void> _loadStockData() async {
     try {
@@ -160,10 +183,9 @@ class _StockMarketDataScreenState extends State<StockMarketDataScreen> {
     bool sectorsSuccess = false;
     
     try {
-      // 重置状态
+      // 更新为加载状态，但不在全屏显示（只更新部分数据）
       if (mounted) {
         setState(() {
-          _isLoading = true;
           _dataFetchFailed = false;
         });
       }
@@ -199,12 +221,6 @@ class _StockMarketDataScreenState extends State<StockMarketDataScreen> {
       }
     } catch (e) {
       _handleDataFetchFailure();
-    } finally {
-      if (mounted) {
-        setState(() {
-          _isLoading = false;
-        });
-      }
     }
   }
 
@@ -488,21 +504,8 @@ class _StockMarketDataScreenState extends State<StockMarketDataScreen> {
           ),
         ],
       ),
-      body: _isLoading
-          ? Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const CircularProgressIndicator(),
-                  const SizedBox(height: 16),
-                  const Text(
-                    '正在加载请稍后',
-                    style: TextStyle(fontSize: 16, color: Colors.grey),
-                  ),
-                ],
-              ),
-            )
-          : _dataFetchFailed
+      // 移除全屏加载状态，使用渐进式加载
+      body: _dataFetchFailed
             ? Center(
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
@@ -601,10 +604,17 @@ class _StockMarketDataScreenState extends State<StockMarketDataScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     if (_hotSectors.isEmpty && !_dataFetchFailed)
-                      const Text(
-                        "概念板块数据获取中...",
-                        style: TextStyle(color: Colors.grey, fontSize: 16),
-                        textAlign: TextAlign.center,
+                      Column(
+                        children: [
+                          const SizedBox(height: 20),
+                          const CircularProgressIndicator(),
+                          const SizedBox(height: 8),
+                          const Text(
+                            "概念板块数据获取中...",
+                            style: TextStyle(color: Colors.grey, fontSize: 16),
+                            textAlign: TextAlign.center,
+                          ),
+                        ],
                       ),
                     if (_hotSectors.isEmpty && _dataFetchFailed)
                       const Text(
