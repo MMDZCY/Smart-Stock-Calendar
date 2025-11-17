@@ -9,7 +9,7 @@ class AkShareApiService {
   final http.Client client;
 
   AkShareApiService({
-    this.baseUrl = 'http://10.161.220.57:8000',
+    this.baseUrl = 'http://10.161.239.132:8000',
     http.Client? client,
   }) : client = client ?? http.Client();
 
@@ -112,7 +112,7 @@ class _StockMarketDataScreenState extends State<StockMarketDataScreen> {
     // 初始化akshare API服务
     // 移动设备环境下，连接到开发机的Python服务
     _akShareApiService = AkShareApiService(
-      baseUrl: 'http://10.161.220.57:8000', // 您的开发机IP地址
+      baseUrl: 'http://10.161.239.132:8000', // 您的开发机IP地址
     );
     // 移动设备无法直接启动Python服务，跳过自动启动
     // _akShareApiService._startPythonServer();

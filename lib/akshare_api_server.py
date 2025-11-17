@@ -197,8 +197,8 @@ async def get_industry_data(date: str = None):
             industry_df = ak.stock_board_industry_summary_ths()
             industry_list = industry_df["板块"].tolist()
             today_str = date_str
-
-            back_day=1
+            current_date = datetime.strptime(date_str, "%Y%m%d") 
+            back_day=0
             while ak.stock_board_industry_index_ths(
                 symbol="银行", 
                 start_date=today_str, 
@@ -212,7 +212,7 @@ async def get_industry_data(date: str = None):
             yesterday_date = current_date - timedelta(days=1)
             yesterday_str = yesterday_date.strftime("%Y%m%d")  # 前一天（无横线）
             
-            back_day=1
+            back_day=0
             while ak.stock_board_industry_index_ths(
                 symbol="银行", 
                 start_date=yesterday_str, 
