@@ -4,6 +4,7 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:timezone/data/latest_all.dart' as tz_data;
 import 'ui/screens/calendar_screen.dart';
+import 'ui/screens/event_edit_screen.dart';
 import 'data/models/event.dart';
 import 'data/models/calendar_subscription.dart';
 
@@ -72,6 +73,27 @@ class MyApp extends StatelessWidget {
         visualDensity: VisualDensity.adaptivePlatformDensity,
       ),
       home: const CalendarScreen(),
+      routes: {
+        '/event_edit': (context) {
+          final args = ModalRoute.of(context)!.settings.arguments as Map<String, dynamic>?;
+          final Event? event = args?['event'];
+          final DateTime? selectedDate = args?['selectedDate'];
+          
+          return EventEditScreen(
+            selectedDate: selectedDate,
+            event: event,
+            onEventSaved: (event) async {
+              final eventsBox = Hive.box<Event>('events');
+              await eventsBox.put(event.id, event);
+              Navigator.of(context).pop(true);
+            },
+            onEventDeleted: (event) async {
+              await event.delete();
+              Navigator.of(context).pop(true);
+            },
+          );
+        },
+      },
     );
   }
 }

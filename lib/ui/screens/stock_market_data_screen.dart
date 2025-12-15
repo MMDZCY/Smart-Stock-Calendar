@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'dart:convert';
 import 'dart:async';
 import 'package:http/http.dart' as http;
+import 'package:hive/hive.dart';
+import '../../data/models/event.dart';
 
 // AkShare API服务类
 class AkShareApiService {
@@ -9,7 +11,7 @@ class AkShareApiService {
   final http.Client client;
 
   AkShareApiService({
-    this.baseUrl = 'http://10.161.239.132:8000',
+    this.baseUrl = 'http://139.196.103.184:8000',
     http.Client? client,
   }) : client = client ?? http.Client();
 
@@ -89,8 +91,13 @@ class AkShareApiService {
 
 class StockMarketDataScreen extends StatefulWidget {
   final DateTime selectedDate;
+  final Box<Event>? eventsBox;
 
-  const StockMarketDataScreen({super.key, required this.selectedDate});
+  const StockMarketDataScreen({
+    super.key, 
+    required this.selectedDate,
+    this.eventsBox,
+  });
 
   @override
   State<StockMarketDataScreen> createState() => _StockMarketDataScreenState();
@@ -105,25 +112,27 @@ class _StockMarketDataScreenState extends State<StockMarketDataScreen> {
   String _errorMessage = '数据获取失败，请稍后重试';
   // 添加akshare API服务实例
   late AkShareApiService _akShareApiService;
+  
+  // 事件管理相关状态
+  Box<Event>? _eventsBox;
+  List<Event> _todayEvents = [];
 
   @override
   void initState() {
     super.initState();
+    
     // 初始化akshare API服务
-    // 移动设备环境下，连接到开发机的Python服务
     _akShareApiService = AkShareApiService(
-      baseUrl: 'http://10.161.239.132:8000', // 您的开发机IP地址
+      baseUrl: 'http://139.196.103.184:8000',
     );
-    // 移动设备无法直接启动Python服务，跳过自动启动
-    // _akShareApiService._startPythonServer();
     
-    // 先初始化基础数据，显示页面框架
+    // 初始化事件管理
+    _eventsBox = widget.eventsBox ?? Hive.box<Event>('events');
+    _loadTodayEvents();
+    
+    // 初始化基础数据
     _initializeBasicData();
-    
-    // 然后开始加载数据
     _loadStockData();
-    
-    // 移除自动定时刷新，只在页面加载时获取一次数据
   }
   
   @override
@@ -135,6 +144,97 @@ class _StockMarketDataScreenState extends State<StockMarketDataScreen> {
     super.dispose();
   }
 
+
+
+
+  // 加载当日事件
+  void _loadTodayEvents() {
+    if (_eventsBox == null) return;
+    
+    final date = widget.selectedDate;
+    final dateString = '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
+    
+    _todayEvents = _eventsBox!.values
+        .where((event) => 
+            '${event.startTime.year}-${event.startTime.month.toString().padLeft(2, '0')}-${event.startTime.day.toString().padLeft(2, '0')}' == dateString)
+        .toList();
+        
+    if (mounted) {
+      setState(() {});
+    }
+  }
+  
+  // 添加新事件
+  Future<void> _addNewEvent() async {
+    if (_eventsBox == null) {
+      print('错误：事件箱未初始化');
+      return;
+    }
+    
+    try {
+      print('打开事件编辑页面...');
+      final result = await Navigator.pushNamed(
+        context,
+        '/event_edit',
+        arguments: {'selectedDate': widget.selectedDate},
+      );
+      
+      print('事件编辑页面返回结果: $result');
+      
+      if (result == true && mounted) {
+        _loadTodayEvents();
+      }
+    } catch (e) {
+      print('添加事件时出错: $e');
+      // 显示错误提示
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('添加事件失败: $e')),
+        );
+      }
+    }
+  }
+  
+  // 编辑事件
+  Future<void> _editEvent(Event event) async {
+    final result = await Navigator.pushNamed(
+      context,
+      '/event_edit',
+      arguments: {'event': event},
+    );
+    
+    if (result == true && mounted) {
+      _loadTodayEvents();
+    }
+  }
+  
+  // 删除事件
+  Future<void> _deleteEvent(Event event) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: const Text('确认删除'),
+          content: Text('确定要删除事件"${event.title}"吗？'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('取消'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              child: const Text('删除', style: TextStyle(color: Colors.red)),
+            ),
+          ],
+        );
+      },
+    );
+    
+    if (confirmed == true && _eventsBox != null) {
+      await event.delete();
+      _loadTodayEvents();
+    }
+  }
 
   // 初始化基础数据，显示页面框架
   void _initializeBasicData() {
@@ -481,26 +581,7 @@ class _StockMarketDataScreenState extends State<StockMarketDataScreen> {
     );
   }
 
-  // 构建传统的指数行（保留作为备选）
-  Widget _buildIndexRow(String name, String value, String change, Color changeColor) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [
-        Expanded(
-          flex: 2,
-          child: Text(name, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-        ),
-        Expanded(
-          flex: 2,
-          child: Text(value, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-        ),
-        Expanded(
-          flex: 1,
-          child: Text(change, style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: changeColor)),
-        ),
-      ],
-    );
-  }
+
   
   // 构建现代化的板块行
   Widget _buildModernSectorRow(String name, String change, bool isPositive) {
@@ -594,30 +675,7 @@ class _StockMarketDataScreenState extends State<StockMarketDataScreen> {
     }).toList();
   }
 
-  // 构建传统的板块列表
-  List<Widget> _buildSectorList(List<Map<String, dynamic>> sectors) {
-    if (sectors.isEmpty) {
-      return [
-        const Text(
-          "暂无数据",
-          style: TextStyle(color: Colors.grey, fontSize: 16),
-          textAlign: TextAlign.center,
-        ),
-      ];
-    }
-    
-    return sectors.map((sector) {
-      return Column(
-        children: [
-          _buildSectorRow(
-            sector['name'],
-            sector['change'],
-          ),
-          if (sector != sectors.last) const Divider(),
-        ],
-      );
-    }).toList();
-  }
+
   @override
   Widget build(BuildContext context) {
     // 格式化日期显示
@@ -965,7 +1023,7 @@ class _StockMarketDataScreenState extends State<StockMarketDataScreen> {
                                   ),
                                   const SizedBox(height: 16),
                                   Text(
-                                    "板块数据获取中...",
+                                    "板块数据获取中...,加载数据较多，请稍加等候哦",
                                     style: TextStyle(
                                       color: Colors.white70,
                                       fontSize: 16,
@@ -1059,11 +1117,161 @@ class _StockMarketDataScreenState extends State<StockMarketDataScreen> {
                         ],
                       ),
                     ),
+                    
+                    // 事件管理区域
+                    const SizedBox(height: 24),
+                    AnimatedContainer(
+                      duration: const Duration(milliseconds: 1000),
+                      curve: Curves.easeOut,
+                      padding: const EdgeInsets.all(24),
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          colors: [
+                            Colors.white.withOpacity(0.15),
+                            Colors.white.withOpacity(0.1),
+                          ],
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                        ),
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(color: Colors.white.withOpacity(0.2)),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.3),
+                            blurRadius: 20,
+                            offset: const Offset(0, 8),
+                          ),
+                        ],
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Icon(
+                                Icons.event,
+                                color: Colors.orange[400],
+                                size: 24,
+                              ),
+                              const SizedBox(width: 8),
+                              const Text(
+                                "当日事件",
+                                style: TextStyle(
+                                  fontSize: 22,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.white,
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 16),
+                          if (_todayEvents.isEmpty)
+                            Container(
+                              padding: const EdgeInsets.all(32),
+                              child: Column(
+                                children: [
+                                  Icon(
+                                    Icons.event_available,
+                                    size: 48,
+                                    color: Colors.orange[400],
+                                  ),
+                                  const SizedBox(height: 16),
+                                  Text(
+                                    "当日暂无事件",
+                                    style: TextStyle(
+                                      color: Colors.white70,
+                                      fontSize: 16,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          if (_todayEvents.isNotEmpty)
+                            ..._todayEvents.map((event) {
+                              return AnimatedContainer(
+                                duration: Duration(milliseconds: 200 + _todayEvents.indexOf(event) * 100),
+                                margin: const EdgeInsets.only(bottom: 12),
+                                decoration: BoxDecoration(
+                                  color: Colors.white.withOpacity(0.1),
+                                  borderRadius: BorderRadius.circular(12),
+                                  border: Border.all(color: Colors.white.withOpacity(0.15)),
+                                ),
+                                child: ListTile(
+                                  contentPadding: const EdgeInsets.all(16),
+                                  leading: CircleAvatar(
+                                    backgroundColor: Colors.orange[400],
+                                    child: Icon(
+                                      Icons.event,
+                                      color: Colors.white,
+                                    ),
+                                  ),
+                                  title: Text(
+                                    event.title,
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                  subtitle: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        "${event.startTime.hour.toString().padLeft(2, '0')}:${event.startTime.minute.toString().padLeft(2, '0')}",
+                                        style: TextStyle(color: Colors.white70),
+                                      ),
+                                      if (event.description?.isNotEmpty == true)
+                                        Text(
+                                          event.description!,
+                                          style: TextStyle(color: Colors.white70),
+                                        ),
+                                    ],
+                                  ),
+                                  trailing: PopupMenuButton<String>(
+                                    icon: Icon(Icons.more_vert, color: Colors.white70),
+                                    onSelected: (value) async {
+                                      switch (value) {
+                                        case 'edit':
+                                          await _editEvent(event);
+                                          break;
+                                        case 'delete':
+                                          await _deleteEvent(event);
+                                          break;
+                                      }
+                                    },
+                                    itemBuilder: (context) => [
+                                      const PopupMenuItem(
+                                        value: 'edit',
+                                        child: ListTile(
+                                          leading: Icon(Icons.edit),
+                                          title: Text('编辑'),
+                                        ),
+                                      ),
+                                      const PopupMenuItem(
+                                        value: 'delete',
+                                        child: ListTile(
+                                          leading: Icon(Icons.delete, color: Colors.red),
+                                          title: Text('删除', style: TextStyle(color: Colors.red)),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  onTap: () => _editEvent(event),
+                                ),
+                              );
+                            }).toList(),
+                        ],
+                      ),
+                    ),
                     const SizedBox(height: 40),
                   ],
                 ),
               ),
             ),
+      floatingActionButton: FloatingActionButton(
+        onPressed: _addNewEvent,
+        backgroundColor: Colors.orange[500],
+        child: const Icon(Icons.add, color: Colors.white),
+      ),
     );
   }
 }

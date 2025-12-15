@@ -61,18 +61,26 @@ class _CalendarScreenState extends State<CalendarScreen> with TickerProviderStat
     // 初始化订阅管理器
     _subscriptionManager = SubscriptionManager(_subscriptionsBox, _eventsBox);
     
-    // 初始化通知服务
-    _initNotifications();
-    
-    // 安排事件提醒
-    _scheduleEventReminders();
-    
-    // 监听事件变化，当有新事件时安排提醒
-    _eventsBox.listenable().addListener(_scheduleEventReminders);
+    // 延迟初始化通知服务以避免LateInitializationError
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      try {
+        await _initNotifications();
+        _scheduleEventReminders();
+        
+        // 监听事件变化，当有新事件时安排提醒
+        _eventsBox.listenable().addListener(_scheduleEventReminders);
+      } catch (e) {
+        print('初始化通知服务时出错: $e');
+      }
+    });
     
     // 启动时自动同步订阅（延迟执行以确保初始化完成）
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      _autoSyncSubscriptions();
+      try {
+        _autoSyncSubscriptions();
+      } catch (e) {
+        print('自动同步订阅时出错: $e');
+      }
     });
   }
   
@@ -82,45 +90,57 @@ class _CalendarScreenState extends State<CalendarScreen> with TickerProviderStat
   
   // 初始化通知服务
   Future<void> _initNotifications() async {
-    const AndroidInitializationSettings androidSettings =
-        AndroidInitializationSettings('@mipmap/ic_launcher');
-    const DarwinInitializationSettings iosSettings =
-        DarwinInitializationSettings();
-    const InitializationSettings settings = InitializationSettings(
-      android: androidSettings,
-      iOS: iosSettings,
-    );
-    
-    await _notifications.initialize(settings);
-    
-    // 创建通知渠道（仅Android）
-    const AndroidNotificationChannel channel = AndroidNotificationChannel(
-      'event_reminder_channel',
-      '事件提醒',
-      description: '日历事件提醒通知',
-      importance: Importance.high,
-    );
-    
-    await _notifications
-        .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()
-        ?.createNotificationChannel(channel);
+    try {
+
+      const AndroidInitializationSettings androidSettings =
+          AndroidInitializationSettings('@mipmap/ic_launcher');
+      const DarwinInitializationSettings iosSettings =
+          DarwinInitializationSettings();
+      const InitializationSettings settings = InitializationSettings(
+        android: androidSettings,
+        iOS: iosSettings,
+      );
+      
+      await _notifications.initialize(settings);
+      
+      // 创建通知渠道（仅Android）
+      const AndroidNotificationChannel channel = AndroidNotificationChannel(
+        'event_reminder_channel',
+        '事件提醒',
+        description: '日历事件提醒通知',
+        importance: Importance.high,
+      );
+      
+      await _notifications
+          .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()
+          ?.createNotificationChannel(channel);
+    } catch (e) {
+      print('初始化通知服务失败: $e');
+      // 静默失败，避免影响用户体验
+    }
   }
 
   // 安排事件提醒
   void _scheduleEventReminders() {
-    // 检查通知服务是否已初始化
+    // 测试访问关键属性确保插件已完全初始化
     try {
-      _notifications;
+      _notifications.resolvePlatformSpecificImplementation;
     } catch (e) {
+      // 通知服务尚未完全初始化，跳过提醒设置
       return;
     }
     
-    // 取消所有之前的提醒
-    _notifications.cancelAll();
-    
-    // 为每个事件安排提醒
-    for (final event in _eventsBox.values) {
-      _scheduleEventReminder(event);
+    try {
+      // 取消所有之前的提醒
+      _notifications.cancelAll();
+      
+      // 为每个事件安排提醒
+      for (final event in _eventsBox.values) {
+        _scheduleEventReminder(event);
+      }
+    } catch (e) {
+      // 忽略提醒设置过程中的错误
+      print('设置事件提醒时出错: $e');
     }
   }
   
@@ -421,7 +441,10 @@ class _CalendarScreenState extends State<CalendarScreen> with TickerProviderStat
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (context) => StockMarketDataScreen(selectedDate: day),
+        builder: (context) => StockMarketDataScreen(
+          selectedDate: day,
+          eventsBox: _eventsBox,
+        ),
       ),
     );
   }
@@ -436,23 +459,7 @@ class _CalendarScreenState extends State<CalendarScreen> with TickerProviderStat
     }).toList();
   }
 
-  // 新事件
-  void _addNewEvent() {
-    if (_selectedDay == null) return;
-    
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) => EventEditScreen(
-          selectedDate: _selectedDay!,
-          onEventSaved: (event) {
-            _eventsBox.add(event);
-            setState(() {});
-          },
-        ),
-      ),
-    );
-  }
+
 
   // 编辑事件
   void _editEvent(Event event) {
@@ -1130,10 +1137,9 @@ class _CalendarScreenState extends State<CalendarScreen> with TickerProviderStat
             ),
           ],
         ),
-      floatingActionButton: (_currentViewIndex == 1 || _currentViewIndex == 2) ? FloatingActionButton(
-        onPressed: _addNewEvent,
-        child: const Icon(Icons.add),
-      ) : null,
+      // 移除月视图和周视图的浮动按钮
+      // 添加事项功能已移至日详情页（StockMarketDataScreen）
+      floatingActionButton: null,
     );
   }
 }

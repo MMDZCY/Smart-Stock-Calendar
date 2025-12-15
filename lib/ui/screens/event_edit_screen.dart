@@ -62,20 +62,39 @@ class _EventEditScreenState extends State<EventEditScreen> {
     super.dispose();
   }
 
-  void _saveEvent() {
+  Future<void> _saveEvent() async {
     if (_formKey.currentState != null && _formKey.currentState!.validate()) {
-      final event = Event(
-        id: widget.event?.id ?? DateTime.now().microsecondsSinceEpoch.toString(),
-        title: _titleController.text,
-        startTime: _startTime,
-        endTime: _endTime,
-        location: _locationController.text.isEmpty ? null : _locationController.text,
-        description: _descriptionController.text.isEmpty ? null : _descriptionController.text,
-        isAllDay: _isAllDay,
-      );
-      
-      widget.onEventSaved(event);
-      Navigator.pop(context);
+      try {
+        final event = Event(
+          id: widget.event?.id ?? DateTime.now().microsecondsSinceEpoch.toString(),
+          title: _titleController.text.trim(),
+          startTime: _startTime,
+          endTime: _endTime,
+          location: _locationController.text.trim().isEmpty ? null : _locationController.text.trim(),
+          description: _descriptionController.text.trim().isEmpty ? null : _descriptionController.text.trim(),
+          isAllDay: _isAllDay,
+        );
+        
+        // 验证结束时间不早于开始时间
+        if (!event.isAllDay && event.endTime.isBefore(event.startTime)) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text('结束时间不能早于开始时间')),
+            );
+          }
+          return;
+        }
+        
+        // 调用保存回调
+        await widget.onEventSaved(event);
+      } catch (e) {
+        print('保存事件时出错: $e');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('保存失败: $e')),
+          );
+        }
+      }
     }
   }
 
@@ -108,72 +127,108 @@ class _EventEditScreenState extends State<EventEditScreen> {
   }
 
   Future<void> _selectStartTime() async {
-    final TimeOfDay? picked = await showTimePicker(
-      context: context,
-      initialTime: TimeOfDay.fromDateTime(_startTime),
-    );
-    
-    if (picked != null) {
-      setState(() {
-        _startTime = DateTime(
-          _startTime.year,
-          _startTime.month,
-          _startTime.day,
-          picked.hour,
-          picked.minute,
+    try {
+      final TimeOfDay? picked = await showTimePicker(
+        context: context,
+        initialTime: TimeOfDay.fromDateTime(_startTime),
+        helpText: '选择开始时间',
+        cancelText: '取消',
+        confirmText: '确定',
+      );
+      
+      if (picked != null && mounted) {
+        setState(() {
+          _startTime = DateTime(
+            _startTime.year,
+            _startTime.month,
+            _startTime.day,
+            picked.hour,
+            picked.minute,
+          );
+          // 自动调整结束时间
+          if (_endTime.isBefore(_startTime) || _endTime == _startTime) {
+            _endTime = _startTime.add(const Duration(hours: 1));
+          }
+        });
+      }
+    } catch (e) {
+      print('选择开始时间时出错: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('选择时间失败，请重试')),
         );
-        // 自动调整结束时间
-        if (_endTime.isBefore(_startTime) || _endTime == _startTime) {
-          _endTime = _startTime.add(const Duration(hours: 1));
-        }
-      });
+      }
     }
   }
 
   Future<void> _selectEndTime() async {
-    final TimeOfDay? picked = await showTimePicker(
-      context: context,
-      initialTime: TimeOfDay.fromDateTime(_endTime),
-    );
-    
-    if (picked != null) {
-      setState(() {
-        _endTime = DateTime(
-          _endTime.year,
-          _endTime.month,
-          _endTime.day,
-          picked.hour,
-          picked.minute,
+    try {
+      final TimeOfDay? picked = await showTimePicker(
+        context: context,
+        initialTime: TimeOfDay.fromDateTime(_endTime),
+        helpText: '选择结束时间',
+        cancelText: '取消',
+        confirmText: '确定',
+      );
+      
+      if (picked != null && mounted) {
+        setState(() {
+          _endTime = DateTime(
+            _endTime.year,
+            _endTime.month,
+            _endTime.day,
+            picked.hour,
+            picked.minute,
+          );
+        });
+      }
+    } catch (e) {
+      print('选择结束时间时出错: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('选择时间失败，请重试')),
         );
-      });
+      }
     }
   }
 
   Future<void> _selectDate() async {
-    final DateTime? picked = await showDatePicker(
-      context: context,
-      initialDate: _startTime,
-      firstDate: DateTime(2000),
-      lastDate: DateTime(2050),
-    );
-    
-    if (picked != null) {
-      setState(() {
-        _startTime = DateTime(
-          picked.year,
-          picked.month,
-          picked.day,
-          _startTime.hour,
-          _startTime.minute,
+    try {
+      final DateTime? picked = await showDatePicker(
+        context: context,
+        initialDate: _startTime,
+        firstDate: DateTime(2000),
+        lastDate: DateTime(2050),
+        helpText: '选择日期',
+        cancelText: '取消',
+        confirmText: '确定',
+      );
+      
+      if (picked != null && mounted) {
+        setState(() {
+          _startTime = DateTime(
+            picked.year,
+            picked.month,
+            picked.day,
+            _startTime.hour,
+            _startTime.minute,
+          );
+          _endTime = DateTime(
+            picked.year,
+            picked.month,
+            picked.day,
+            _endTime.hour,
+            _endTime.minute,
+          );
+        });
+      }
+    } catch (e) {
+      print('选择日期时出错: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('选择日期失败，请重试')),
         );
-        _endTime = DateTime(
-          picked.year,
-          picked.month,
-          picked.day,
-          _endTime.hour,
-          _endTime.minute,
-        );
-      });
+      }
     }
   }
 
