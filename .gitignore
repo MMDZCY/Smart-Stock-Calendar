@@ -43,3 +43,22 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+stock_data.db
+
+# Backup files
+*.bak
+*.backup
+*.rar
+*.zip
+*.7z
+*.tar.gz
+
+# OS files
+Thumbs.db
+.DS_Store
+
