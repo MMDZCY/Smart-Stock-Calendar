@@ -1,10 +1,18 @@
 import akshare as ak
 import pandas as pd
+import sqlite3
+import os
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
 from datetime import datetime, timedelta
 import logging
+from typing import Optional, Dict, List
+import threading
+lock = threading.Lock()
+# 数据库配置
+DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "stock_data.db")
+DATA_RETENTION_DAYS = 180  # 数据保留180天（约半年）
 
 # 配置日志
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
