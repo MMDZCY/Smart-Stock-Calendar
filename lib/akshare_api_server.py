@@ -322,11 +322,11 @@ MAJOR_INDEXES = {
 async def get_index_data(
     date: str = Query(None, description="日期格式：YYYYMMDD，不提供则获取最新交易日数据")
 ):
-    """获取主要指数数据（包含开盘、收盘、涨跌幅等）"""
+    """获取主要指数数据（新增缓存支持）"""
     try:
         # 处理目标日期
         if date is None:
-            target_date = datetime.now()  # 默认为今天
+            target_date = datetime.now()
         else:
             try:
                 target_date = datetime.strptime(date, "%Y%m%d")
@@ -337,57 +337,77 @@ async def get_index_data(
         logger.info(f"开始获取指数数据（目标日期：{target_date_str}）")
         
         result = []
-        
+        actual_date_str = None  # 实际使用的交易日
+
         for code, name in MAJOR_INDEXES.items():
             try:
-                # 获取指数日线数据（接口返回DataFrame，包含date、open、close等列）
-                index_df = ak.stock_zh_index_daily(symbol=code)
-                # 确保日期列格式正确（转换为datetime，避免字符串格式不一致）
-                index_df["date"] = pd.to_datetime(index_df["date"])
-                # 提取日期字符串列（用于匹配）
-                index_df["date_str"] = index_df["date"].dt.strftime("%Y-%m-%d")
-                
-                # 筛选目标日期的数据
-                mask = index_df["date_str"] == target_date_str
-                target_rows = index_df[mask]
-                
-                # 若目标日期无数据，尝试往前推（最多推9天，应对周末/节假日）
-                days_back = 1
-                while target_rows.empty and days_back <= 9:
-                    prev_date = target_date - timedelta(days=days_back)
-                    prev_date_str = prev_date.strftime("%Y-%m-%d")
-                    logger.warning(f"指数[{name}]在{target_date_str}无数据，尝试前{days_back}天：{prev_date_str}")
-                    mask_prev = index_df["date_str"] == prev_date_str
-                    target_rows = index_df[mask_prev]
-                    days_back += 1
-                
-                # 取匹配到的第一条数据（通常只有一条）
-                index_data = target_rows.iloc[0]
-                actual_date_str = index_data["date_str"]  # 实际获取到的日期（可能不是目标日期）
-                
-                # 提取基础数据（带容错的类型转换）
-                try:
-                    open_val = float(index_data.get("open", 0))
-                    close_val = float(index_data.get("close", 0))
-                    high_val = float(index_data.get("high", 0))
-                    low_val = float(index_data.get("low", 0))
-                    volume_val = float(index_data.get("volume", 0))  # 成交量
-                except ValueError as e:
-                    logger.warning(f"指数[{name}]数据格式错误：{str(e)}，跳过")
+                # Step 1: 优先尝试从缓存读取（先用目标日期）
+                cached = get_cached_index_data(code, target_date_str)
+                if cached:
+                    result.append({
+                        "name": cached["name"],
+                        "code": cached["code"],
+                        "open": cached["open"],
+                        "close": cached["close"],
+                        "high": cached["high"],
+                        "low": cached["low"],
+                        "volume": cached["volume"],
+                        "change_percent": cached["change_percent"],
+                        "date": cached["date"]
+                    })
+                    actual_date_str = cached["date"]
                     continue
+
+                # Step 2: 缓存未命中，实时获取全量数据
+                index_df = ak.stock_zh_index_daily(symbol=code)
+                if index_df.empty:
+                    logger.warning(f"指数 {name} 无任何历史数据")
+                    continue
+
+                index_df["date"] = pd.to_datetime(index_df["date"])
+                index_df["date_str"] = index_df["date"].dt.strftime("%Y-%m-%d")
+
+                # 回溯找到最近交易日
+                query_date = target_date
+                data_row = None
+                for back in range(10):
+                    q_str = query_date.strftime("%Y-%m-%d")
+                    matched = index_df[index_df["date_str"] == q_str]
+                    if not matched.empty:
+                        data_row = matched.iloc[0]
+                        actual_date_str = q_str
+                        break
+                    query_date -= timedelta(days=1)
                 
-                # 计算涨跌幅（基于前一日收盘价）
-                # 找到前一日的数据（索引位置-1）
-                current_idx = target_rows.index[0]
-                if current_idx > 0:  # 确保不是第一条数据（有前一日数据）
-                    prev_close = float(index_df.iloc[current_idx - 1].get("close", close_val))
+                if data_row is None:
+                    logger.warning(f"指数 {name} 在目标日期附近10天内无数据")
+                    continue
+
+                # 提取数据
+                open_val = float(data_row["open"])
+                close_val = float(data_row["close"])
+                high_val = float(data_row["high"])
+                low_val = float(data_row["low"])
+                volume_val = float(data_row["volume"])
+
+                # 计算涨跌幅：找前一交易日收盘价
+                prev_close = None
+                prev_query = query_date - timedelta(days=1)
+                for _ in range(10):
+                    prev_str = prev_query.strftime("%Y-%m-%d")
+                    prev_row = index_df[index_df["date_str"] == prev_str]
+                    if not prev_row.empty:
+                        prev_close = float(prev_row.iloc[0]["close"])
+                        break
+                    prev_query -= timedelta(days=1)
+
+                if prev_close:
                     change_percent = round((close_val - prev_close) / prev_close * 100, 2)
                 else:
-                    # 若没有前一日数据（如指数刚发布），用当日涨跌幅（open->close）
-                    change_percent = round((close_val - open_val) / open_val * 100 if open_val != 0 else 0, 2)
-                    logger.warning(f"指数[{name}]无历史数据，涨跌幅基于当日开盘价计算")
-                
-                result.append({
+                    change_percent = round((close_val - open_val) / open_val * 100, 2) if open_val != 0 else 0
+
+                # 组装数据
+                data = {
                     "name": name,
                     "code": code,
                     "open": open_val,
@@ -396,183 +416,167 @@ async def get_index_data(
                     "low": low_val,
                     "volume": volume_val,
                     "change_percent": change_percent,
-                    "date": actual_date_str  # 实际数据日期（可能与目标日期不同）
+                    "date": actual_date_str
+                }
+                result.append(data)
+
+                # Step 3: 保存到缓存
+                save_index_data({
+                    "code": code,
+                    "name": name,
+                    "date": actual_date_str,
+                    "open": open_val,
+                    "close": close_val,
+                    "high": high_val,
+                    "low": low_val,
+                    "volume": volume_val,
+                    "change_percent": change_percent
                 })
-                
+
             except Exception as e:
                 logger.error(f"获取指数[{name}]数据失败：{str(e)}")
-                continue  # 单个指数失败不影响其他指数
-        
+                continue
+
         if not result:
-            raise HTTPException(status_code=500, detail="所有指数数据获取失败（可能为非交易日或接口异常）")
-        
-        logger.info(f"成功获取{len(result)}个指数数据")
-        return {
+            raise HTTPException(status_code=500, detail="所有指数数据获取失败")
+
+        resp = {
             "code": 200,
             "message": "success",
             "data": result
         }
-        
+        if actual_date_str and actual_date_str != target_date_str:
+            resp["note"] = f"请求日期{target_date_str}无数据，已返回最近交易日{actual_date_str}"
+
+        logger.info(f"指数数据返回：{len(result)}条")
+        return resp
+
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"获取指数数据异常：{str(e)}")
         raise HTTPException(status_code=500, detail=f"服务器错误：{str(e)}")
 
-# 获取行业板块数据
+
 @app.get("/api/industry")
 async def get_industry_data(date: str = None):
     """
-    获取行业板块数据（修复版：历史数据正确回溯 + 自动缓存）
-    日期格式：YYYYMMDD，不提供则获取最新数据
+    获取行业板块数据（支持历史日期 + 有效缓存）
     """
     try:
         # 处理目标日期
         if date is None:
             target_date = datetime.now()
             target_date_str = target_date.strftime('%Y-%m-%d')
-            today_str = datetime.now().strftime("%Y%m%d")
-            is_today = True
+            date_no_dash = target_date.strftime("%Y%m%d")
         else:
             target_date = datetime.strptime(date, "%Y%m%d")
             target_date_str = target_date.strftime('%Y-%m-%d')
-            today_str = date
-            is_today = (today_str == datetime.now().strftime("%Y%m%d"))
+            date_no_dash = date
 
-        # 未来日期提示
-        if target_date > datetime.now():
-            logger.warning(f"拒绝未来日期请求: {target_date_str}")
-            return {
-                "code": 400,
-                "message": f"不能查询未来日期 {target_date_str}，请查询历史交易日",
-                "data": [],
-                "suggest": "不传date参数获取最新交易日数据"
-            }
+        if target_date.date() > datetime.now().date():
+            return {"code": 400, "message": "不能查询未来日期", "data": []}
 
-        logger.info(f"获取行业数据：请求日期={target_date_str}, 是否当天={is_today}")
+        logger.info(f"请求行业数据: {target_date_str}")
 
-        # 1. 首先检查缓存（用请求的target_date_str）
+        # 1. 先查缓存（直接用请求的target_date_str）
         cached_data = get_cached_industry_data(target_date_str)
         if cached_data:
-            logger.info(f"✅ 缓存命中：{target_date_str}，共{len(cached_data)}条")
-            return {
-                "code": 200,
-                "message": "success",
-                "data": cached_data,
-                "data_source": "cache"
-            }
+            logger.info(f"✅ 缓存命中: {target_date_str}，共{len(cached_data)}条")
+            return {"code": 200, "message": "success", "data": cached_data, "data_source": "cache"}
 
         # 2. 缓存未命中，实时获取
-        logger.info(f"❌ 缓存未命中，实时获取 {target_date_str}")
+        logger.info(f"❌ 缓存未命中，实时拉取 {target_date_str}")
+
+        # 获取行业列表（一次就好）
+        summary_df = ak.stock_board_industry_summary_ths()
+        if summary_df.empty:
+            raise ValueError("无法获取行业板块列表")
+        industry_list = summary_df["板块"].tolist()
+
+        # 找到实际交易日（回溯最多10天）
+        actual_date_str = None
+        actual_date_no_dash = None
+        query_date = target_date
+        q_no_dash = date_no_dash
+        for back in range(10):
+            probe = ak.stock_board_industry_index_ths(symbol="银行", start_date=q_no_dash, end_date=q_no_dash)
+            if not probe.empty:
+                actual_date_no_dash = q_no_dash
+                actual_date_str = query_date.strftime("%Y-%m-%d")
+                break
+            query_date -= timedelta(days=1)
+            q_no_dash = query_date.strftime("%Y%m%d")
+        else:
+            raise HTTPException(status_code=404, detail="附近10天无交易日数据")
+
+        # 找前一交易日（计算涨跌幅基准）
+        prev_date_no_dash = None
+        prev_query = query_date - timedelta(days=1)
+        for back in range(1, 15):
+            p_no_dash = prev_query.strftime("%Y%m%d")
+            prev_probe = ak.stock_board_industry_index_ths(symbol="银行", start_date=p_no_dash, end_date=p_no_dash)
+            if not prev_probe.empty:
+                prev_date_no_dash = p_no_dash
+                break
+            prev_query -= timedelta(days=1)
+        else:
+            logger.warning("未找到前一交易日，涨跌幅可能不准")
+
+        # 计算所有行业涨跌幅
         sectors = []
+        for industry in industry_list:
+            try:
+                today_df = ak.stock_board_industry_index_ths(symbol=industry, start_date=actual_date_no_dash, end_date=actual_date_no_dash)
+                if today_df.empty or "收盘价" not in today_df.columns:
+                    continue
+                today_close = float(today_df["收盘价"].iloc[0])
 
-        try:
-            # 获取当前所有行业列表
-            summary_df = ak.stock_board_industry_summary_ths()
-            if summary_df.empty:
-                raise ValueError("无法获取行业板块列表")
-            industry_list = summary_df["板块"].tolist()
-            logger.info(f"获取到 {len(industry_list)} 个行业板块")
-
-            # 3. 找到实际交易日（从目标日期开始往前找最多10天）
-            query_date = target_date
-            date_no_dash = today_str  # YYYYMMDD格式给AKShare
-            actual_date_no_dash = None
-            actual_date_str = None
-
-            for back_days in range(10):  # 最多找10天前的交易日
-                probe_df = ak.stock_board_industry_index_ths(
-                    symbol="银行", start_date=date_no_dash, end_date=date_no_dash
-                )
-                if not probe_df.empty:
-                    actual_date_no_dash = date_no_dash
-                    actual_date_str = query_date.strftime("%Y-%m-%d")  # 用找到的日期作为缓存key
-                    logger.info(f"找到实际交易日：{actual_date_str} (回溯{back_days}天)")
-                    break
-                
-                # 往前推1天
-                query_date -= timedelta(days=1)
-                date_no_dash = query_date.strftime("%Y%m%d")
-            else:
-                raise HTTPException(status_code=404, detail=f"目标日期{target_date_str}附近10天无交易数据")
-
-            # 4. 找到前一交易日（计算涨跌幅基准）
-            prev_date = query_date - timedelta(days=1)
-            prev_date_no_dash = prev_date.strftime("%Y%m%d")
-            for back_days in range(1, 10):
-                prev_probe = ak.stock_board_industry_index_ths(
-                    symbol="银行", start_date=prev_date_no_dash, end_date=prev_date_no_dash
-                )
-                if not prev_probe.empty:
-                    logger.info(f"找到前一交易日：{prev_date.strftime('%Y-%m-%d')}")
-                    break
-                prev_date -= timedelta(days=1)
-                prev_date_no_dash = prev_date.strftime("%Y%m%d")
-            else:
-                logger.warning(f"找不到 {actual_date_str} 的前一交易日，使用开盘价基准")
-
-            # 5. 计算所有行业涨跌幅
-            success_count = 0
-            for industry in industry_list:
-                try:
-                    today_df = ak.stock_board_industry_index_ths(
-                        symbol=industry, start_date=actual_date_no_dash, end_date=actual_date_no_dash
-                    )
-                    yesterday_df = ak.stock_board_industry_index_ths(
-                        symbol=industry, start_date=prev_date_no_dash, end_date=prev_date_no_dash
-                    )
-
-                    if not today_df.empty and not yesterday_df.empty:
-                        today_close = float(today_df["收盘价"].iloc[0])
+                if prev_date_no_dash:
+                    yesterday_df = ak.stock_board_industry_index_ths(symbol=industry, start_date=prev_date_no_dash, end_date=prev_date_no_dash)
+                    if not yesterday_df.empty and "收盘价" in yesterday_df.columns:
                         yesterday_close = float(yesterday_df["收盘价"].iloc[0])
                         change_percent = round((today_close - yesterday_close) / yesterday_close * 100, 2)
-                        
-                        sectors.append({
-                            "name": str(industry),
-                            "change_percent": change_percent,
-                            "date": actual_date_str  # ✅ 关键：用实际交易日作为缓存日期
-                        })
-                        success_count += 1
-                    # 即使单个行业失败，也继续其他行业
-                except Exception as e:
-                    logger.debug(f"行业 {industry} 数据失败: {e}")
-                    continue
+                    else:
+                        change_percent = 0.0
+                else:
+                    change_percent = 0.0
 
-            # 6. ✅ 按涨跌幅排序 + 保存到数据库（用实际日期作为key）
-            sectors.sort(key=lambda x: x["change_percent"], reverse=True)
-            if sectors:
-                # 保存时用实际交易日作为缓存key，确保下次能命中
-                for sector in sectors:
-                    sector["date"] = actual_date_str  # 确保一致
-                save_industry_data(sectors)
-                logger.info(f"✅ 保存到数据库成功！日期={actual_date_str}, 成功{len(sectors)}/{len(industry_list)}个行业")
+                sectors.append({
+                    "name": industry,
+                    "change_percent": change_percent,
+                    "date": actual_date_str  # 关键：保存时用实际交易日
+                })
+            except Exception as e:
+                logger.debug(f"行业 {industry} 获取失败: {e}")
+                continue
 
-            # 7. 返回（即使部分失败也返回可用数据）
-            result = {
-                "code": 200,
-                "message": "success",
-                "data": sectors,
-                "data_source": "live"
-            }
-            if actual_date_str != target_date_str:
-                result["note"] = f"请求日期{target_date_str}无数据，返回最近交易日{actual_date_str}"
-            logger.info(f"行业数据返回：{len(sectors)}条 (实际日期: {actual_date_str})")
-            return result
+        if not sectors:
+            raise HTTPException(status_code=500, detail="所有行业数据获取失败")
 
-        except HTTPException:
-            raise
-        except Exception as e:
-            logger.error(f"行业数据获取异常: {e}")
-            raise HTTPException(status_code=500, detail=f"获取行业数据失败: {str(e)}")
+        # 排序
+        sectors.sort(key=lambda x: x["change_percent"], reverse=True)
+
+        # 保存缓存（用实际交易日作为key）
+        save_industry_data(sectors)
+        logger.info(f"✅ 实时数据保存缓存成功: {actual_date_str}，共{len(sectors)}条")
+
+        resp = {
+            "code": 200,
+            "message": "success",
+            "data": sectors,
+            "data_source": "live"
+        }
+        if actual_date_str != target_date_str:
+            resp["note"] = f"请求日期{target_date_str}无数据，返回最近交易日{actual_date_str}"
+
+        return resp
 
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"行业接口全局异常: {e}")
-        raise HTTPException(status_code=500, detail=f"服务器错误: {str(e)}")
-
-
-
+        logger.error(f"行业数据异常: {e}")
+        raise HTTPException(status_code=500, detail="服务器错误")
 
 if __name__ == "__main__":
     # 启动服务，监听在0.0.0.0:8000
