@@ -4,8 +4,9 @@ import 'dart:async';
 import 'package:http/http.dart' as http;
 import 'package:hive/hive.dart';
 import '../../data/models/event.dart';
+import '../../utils/lunar_utils.dart'; // [新增] 引入日期工具类用于判断节假日
 
-// AkShare API服务类 (逻辑保持不变)
+// AkShare API服务类
 class AkShareApiService {
   final String baseUrl;
   final http.Client client;
@@ -198,7 +199,6 @@ class _StockMarketDataScreenState extends State<StockMarketDataScreen> {
       
       bool isServiceAvailable = await _akShareApiService.checkServiceAvailability();
       if (!isServiceAvailable) {
-        // 等待一下再试，如果是本地调试可能服务刚起
         await Future.delayed(const Duration(seconds: 1));
         isServiceAvailable = await _akShareApiService.checkServiceAvailability();
       }
@@ -301,7 +301,6 @@ class _StockMarketDataScreenState extends State<StockMarketDataScreen> {
         industryData.sort((a, b) => (b['change_percent'] ?? 0.0).compareTo(a['change_percent'] ?? 0.0));
         
         List<Map<String, dynamic>> sectors = [];
-        // Top 5
         for (int i = 0; i < industryData.length && i < 5; i++) {
           var sector = industryData[i];
           double changePercent = sector['change_percent'] ?? 0.0;
@@ -313,7 +312,6 @@ class _StockMarketDataScreenState extends State<StockMarketDataScreen> {
           });
         }
         
-        // Worst 5
         for (int i = industryData.length - 5; i < industryData.length && i >= 0; i++) {
           if (i < 0) continue; 
           var sector = industryData[i];
@@ -340,8 +338,6 @@ class _StockMarketDataScreenState extends State<StockMarketDataScreen> {
     return days[weekday - 1];
   }
   
-  // ================= UI 构建部分 =================
-
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -351,11 +347,10 @@ class _StockMarketDataScreenState extends State<StockMarketDataScreen> {
     String weekday = _getWeekday(widget.selectedDate.weekday);
     
     return Scaffold(
-      // [改动] 移除 extendBodyBehindAppBar，使用标准背景色
       appBar: AppBar(
         title: const Text('市场概览'),
         centerTitle: true,
-        backgroundColor: colorScheme.surface, // 透明或跟随背景
+        backgroundColor: colorScheme.surface,
         scrolledUnderElevation: 0,
         actions: [
           IconButton(
@@ -404,13 +399,19 @@ class _StockMarketDataScreenState extends State<StockMarketDataScreen> {
   }
 
   Widget _buildContent(String formattedDate, String weekday, ThemeData theme, ColorScheme colorScheme) {
+    // [修改] 增加交易日判断逻辑
+    bool isWeekend = widget.selectedDate.weekday == 6 || widget.selectedDate.weekday == 7;
+    bool isHoliday = LunarUtils.isHoliday(widget.selectedDate);
+    // 简单判断：非周末且非节假日为交易日
+    // (注：这不包含调休补班的情况，但已足够准确覆盖大部分场景)
+    bool isTradingDay = !isWeekend && !isHoliday;
+
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
-        // 1. 日期信息卡片 (M3 Card)
         Card(
           elevation: 0,
-          color: colorScheme.surfaceContainerHighest, // 稍微突出的背景
+          color: colorScheme.surfaceContainerHighest,
           child: Padding(
             padding: const EdgeInsets.all(20),
             child: Row(
@@ -436,16 +437,33 @@ class _StockMarketDataScreenState extends State<StockMarketDataScreen> {
                       children: [
                         Text("星期$weekday", style: theme.textTheme.bodyMedium?.copyWith(color: colorScheme.onSurfaceVariant)),
                         const SizedBox(width: 12),
-                        // 简单的交易日标记
+                        
+                        // [修改] 动态显示 交易日/休市
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                           decoration: BoxDecoration(
-                            color: colorScheme.secondaryContainer,
+                            color: isTradingDay 
+                                ? colorScheme.secondaryContainer // 交易日：高亮
+                                : colorScheme.surfaceDim,        // 休市：灰色
                             borderRadius: BorderRadius.circular(4),
                           ),
-                          child: Text(
-                            "交易日", 
-                            style: theme.textTheme.labelSmall?.copyWith(color: colorScheme.onSecondaryContainer)
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              if (!isTradingDay) ...[
+                                Icon(Icons.access_time, size: 12, color: colorScheme.onSurfaceVariant),
+                                const SizedBox(width: 4),
+                              ],
+                              Text(
+                                isTradingDay ? "交易日" : "休市", 
+                                style: theme.textTheme.labelSmall?.copyWith(
+                                  color: isTradingDay 
+                                      ? colorScheme.onSecondaryContainer 
+                                      : colorScheme.onSurfaceVariant,
+                                  fontWeight: FontWeight.bold,
+                                )
+                              ),
+                            ],
                           ),
                         ),
                       ],
@@ -458,21 +476,18 @@ class _StockMarketDataScreenState extends State<StockMarketDataScreen> {
         ),
         
         const SizedBox(height: 24),
-        
-        // 2. 主要指数 (M3 Card with Grid)
         Text(" 主要指数", style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold)),
         const SizedBox(height: 12),
-        // 使用 Wrap 或 Row 展示三个指数卡片
         Row(
           children: _majorIndices.map((indexData) {
             Color changeColor = indexData['changeColor'] == Colors.red 
                 ? colorScheme.error 
-                : Colors.green; // 绿色可以用自定义，或者 colorScheme.tertiary
+                : Colors.green;
             
             return Expanded(
               child: Card(
                 elevation: 0,
-                color: colorScheme.surfaceContainerLow, // 较低层级背景
+                color: colorScheme.surfaceContainerLow,
                 margin: const EdgeInsets.symmetric(horizontal: 4),
                 child: Padding(
                   padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 8),
@@ -498,20 +513,16 @@ class _StockMarketDataScreenState extends State<StockMarketDataScreen> {
         ),
 
         const SizedBox(height: 24),
-
-        // 3. 热门板块 (M3 List)
         Text(" 热门概念板块", style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold)),
         const SizedBox(height: 12),
         if (_hotSectors.isEmpty && !_dataFetchFailed)
-           Center(child: CircularProgressIndicator())
+           const Center(child: CircularProgressIndicator())
         else ...[
-           // 涨幅榜
            if (_hotSectors.any((s) => s['type'] == 'top_performer')) ...[
               _buildSectionHeader("涨幅榜", Icons.trending_up, colorScheme.error, theme),
               ..._hotSectors.where((s) => s['type'] == 'top_performer').map((s) => _buildSectorItem(s, theme, colorScheme)),
               const SizedBox(height: 16),
            ],
-           // 跌幅榜
            if (_hotSectors.any((s) => s['type'] == 'worst_performer')) ...[
               _buildSectionHeader("跌幅榜", Icons.trending_down, Colors.green, theme),
               ..._hotSectors.where((s) => s['type'] == 'worst_performer').map((s) => _buildSectorItem(s, theme, colorScheme)),
@@ -519,8 +530,6 @@ class _StockMarketDataScreenState extends State<StockMarketDataScreen> {
         ],
 
         const SizedBox(height: 24),
-
-        // 4. 当日事件
         Text(" 当日事件", style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold)),
         const SizedBox(height: 12),
         if (_todayEvents.isEmpty)
@@ -558,13 +567,13 @@ class _StockMarketDataScreenState extends State<StockMarketDataScreen> {
               ),
               trailing: IconButton(
                 icon: const Icon(Icons.more_vert),
-                onPressed: () => _editEvent(event), // 简化为直接点击编辑，也可以弹窗
+                onPressed: () => _editEvent(event),
               ),
               onTap: () => _editEvent(event),
             ),
           )),
           
-        const SizedBox(height: 80), // 底部留白给 FAB
+        const SizedBox(height: 80),
       ],
     );
   }
@@ -586,7 +595,7 @@ class _StockMarketDataScreenState extends State<StockMarketDataScreen> {
     Color changeColor = sector['changeColor'] == Colors.red ? colorScheme.error : Colors.green;
     return Card(
       elevation: 0,
-      color: colorScheme.surface, // 透明或纯色，依靠外层背景
+      color: colorScheme.surface,
       shape: RoundedRectangleBorder(
         side: BorderSide(color: colorScheme.outlineVariant.withOpacity(0.5)),
         borderRadius: BorderRadius.circular(12)

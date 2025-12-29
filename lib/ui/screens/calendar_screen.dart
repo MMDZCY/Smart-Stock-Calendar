@@ -9,10 +9,11 @@ import '../../utils/import_export.dart';
 import '../../utils/lunar_utils.dart';
 import 'widgets/event_card.dart';
 import 'widgets/year_view.dart';
-import 'widgets/app_drawer.dart'; // [引入侧边栏]
+import 'widgets/app_drawer.dart';
 import 'event_edit_screen.dart';
 import 'subscription_management_screen.dart';
 import 'stock_market_data_screen.dart';
+
 
 class CalendarScreen extends StatefulWidget {
   const CalendarScreen({super.key});
@@ -35,6 +36,9 @@ class _CalendarScreenState extends State<CalendarScreen> with TickerProviderStat
   
   late final ImportExportManager _importExportManager;
   late final SubscriptionManager _subscriptionManager;
+
+  // [性能优化] 内存缓存
+  Map<DateTime, List<Event>> _eventsCache = {};
   
   @override
   void initState() {
@@ -52,16 +56,23 @@ class _CalendarScreenState extends State<CalendarScreen> with TickerProviderStat
     _importExportManager = ImportExportManager(_eventsBox);
     _subscriptionManager = SubscriptionManager(_subscriptionsBox, _eventsBox);
     
+    // 初始化缓存
+    _updateEventsCache();
+    _eventsBox.listenable().addListener(_updateEventsCache);
+    
+    // [恢复功能] 恢复通知初始化和提醒调度
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       try {
         await _initNotifications();
         _scheduleEventReminders();
+        // 监听数据库变化，实时更新提醒
         _eventsBox.listenable().addListener(_scheduleEventReminders);
       } catch (e) {
         debugPrint('初始化通知服务时出错: $e');
       }
     });
     
+    // 自动同步订阅
     WidgetsBinding.instance.addPostFrameCallback((_) {
       try {
         _autoSyncSubscriptions();
@@ -71,6 +82,38 @@ class _CalendarScreenState extends State<CalendarScreen> with TickerProviderStat
     });
   }
 
+  // [性能优化] 更新缓存
+  void _updateEventsCache() {
+    final Map<DateTime, List<Event>> newCache = {};
+
+    for (final event in _eventsBox.values) {
+      DateTime rangeDate = event.startTime;
+      final endDate = event.endTime;
+      DateTime normalize(DateTime dt) => DateTime(dt.year, dt.month, dt.day);
+      final normEnd = normalize(endDate);
+      DateTime current = normalize(rangeDate);
+      
+      do {
+        if (newCache[current] == null) newCache[current] = [];
+        newCache[current]!.add(event);
+        current = current.add(const Duration(days: 1));
+      } while (current.isBefore(normEnd) || isSameDay(current, normEnd));
+    }
+
+    if (mounted) {
+      setState(() {
+        _eventsCache = newCache;
+      });
+    }
+  }
+
+  // [性能优化] O(1) 查询
+  List<Event> _getEventsForDay(DateTime day) {
+    final normalizedDay = DateTime(day.year, day.month, day.day);
+    return _eventsCache[normalizedDay] ?? [];
+  }
+
+  // [恢复功能] 初始化通知
   Future<void> _initNotifications() async {
     try {
       const AndroidInitializationSettings androidSettings =
@@ -98,13 +141,15 @@ class _CalendarScreenState extends State<CalendarScreen> with TickerProviderStat
     }
   }
 
+  // [恢复功能] 调度所有提醒
   void _scheduleEventReminders() {
     try {
+      // 简单判断一下插件是否可用
       _notifications.resolvePlatformSpecificImplementation;
     } catch (e) { return; }
     
     try {
-      _notifications.cancelAll();
+      _notifications.cancelAll(); // 先清除旧的，避免重复
       for (final event in _eventsBox.values) {
         _scheduleEventReminder(event);
       }
@@ -113,11 +158,13 @@ class _CalendarScreenState extends State<CalendarScreen> with TickerProviderStat
     }
   }
   
+  // [恢复功能] 设置单个事件的提醒
   Future<void> _scheduleEventReminder(Event event) async {
     final now = DateTime.now();
     final eventStart = event.startTime;
     if (eventStart.isBefore(now)) return;
     
+    // 提醒策略：开始前30分钟、1小时、24小时
     final reminderTimes = [
       eventStart.subtract(const Duration(minutes: 30)),
       eventStart.subtract(const Duration(hours: 1)),
@@ -126,9 +173,12 @@ class _CalendarScreenState extends State<CalendarScreen> with TickerProviderStat
     
     for (final reminderTime in reminderTimes) {
       if (reminderTime.isBefore(now)) continue;
+      
       final delay = reminderTime.difference(now).inMilliseconds;
+      // 生成唯一的 ID
       final notificationId = (event.id.hashCode % 1000000) + (reminderTime.millisecondsSinceEpoch % 1000);
       
+      // 使用简单的延时显示 (注：生产环境建议使用 zonedSchedule，但为了保持代码一致性，恢复原逻辑)
       Future.delayed(Duration(milliseconds: delay), () {
         _notifications.show(
           notificationId,
@@ -157,6 +207,30 @@ class _CalendarScreenState extends State<CalendarScreen> with TickerProviderStat
     return '${difference.inMinutes}分钟后';
   }
   
+  // [恢复功能] 测试通知按钮功能
+  Future<void> _testNotification() async {
+    try {
+       await _notifications.show(
+        9999, 
+        '测试通知', 
+        '通知功能已恢复正常', 
+        const NotificationDetails(
+          android: AndroidNotificationDetails(
+            'event_reminder_channel', 
+            '事件提醒', 
+            importance: Importance.high
+          ), 
+          iOS: DarwinNotificationDetails()
+        )
+      );
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('已发送测试通知')));
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('测试通知失败: $e')));
+    }
+  }
+
+  // --- 以下保持不变 ---
+
   Future<void> _autoSyncSubscriptions() async {
     try {
       final results = await _subscriptionManager.syncAllSubscriptions();
@@ -177,7 +251,6 @@ class _CalendarScreenState extends State<CalendarScreen> with TickerProviderStat
           message += count >= 0 ? '$name: $count 个事件\n' : '$name: 同步失败\n';
         });
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
-        setState(() {});
       }
     } catch (e) {
       if (mounted) {
@@ -190,7 +263,9 @@ class _CalendarScreenState extends State<CalendarScreen> with TickerProviderStat
     Navigator.push(
       context,
       MaterialPageRoute(builder: (context) => SubscriptionManagementScreen(subscriptionManager: _subscriptionManager)),
-    ).then((_) => setState(() {})); 
+    ).then((_) {
+      _updateEventsCache(); 
+    }); 
   }
   
   Future<void> _exportEventsToICS() async {
@@ -212,7 +287,7 @@ class _CalendarScreenState extends State<CalendarScreen> with TickerProviderStat
       final data = await Clipboard.getData('text/plain');
       if (data?.text == null) return;
       final count = await _importExportManager.importEventsFromICS(data!.text!);
-      if (mounted) { ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('导入 $count 个事件'))); setState(() {}); }
+      if (mounted) { ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('导入 $count 个事件'))); }
     } catch (e) { if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('导入失败: $e'))); }
   }
   Future<void> _importEventsFromJSON() async {
@@ -220,19 +295,15 @@ class _CalendarScreenState extends State<CalendarScreen> with TickerProviderStat
       final data = await Clipboard.getData('text/plain');
       if (data?.text == null) return;
       final count = await _importExportManager.importEventsFromJSON(data!.text!);
-      if (mounted) { ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('导入 $count 个事件'))); setState(() {}); }
+      if (mounted) { ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('导入 $count 个事件'))); }
     } catch (e) { if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('导入失败: $e'))); }
   }
 
-  Future<void> _testNotification() async {
-    try { _notifications; } catch (e) { return; }
-    await _notifications.show(9999, '测试通知', '通知功能正常', const NotificationDetails(android: AndroidNotificationDetails('event_reminder_channel', '事件提醒', importance: Importance.high), iOS: DarwinNotificationDetails()));
-  }
-  
   @override
   void dispose() {
     _scaleController.dispose();
     _opacityController.dispose();
+    _eventsBox.listenable().removeListener(_updateEventsCache);
     super.dispose();
   }
   
@@ -259,22 +330,12 @@ class _CalendarScreenState extends State<CalendarScreen> with TickerProviderStat
     Navigator.push(context, MaterialPageRoute(builder: (context) => StockMarketDataScreen(selectedDate: day, eventsBox: _eventsBox)));
   }
 
-  List<dynamic> _getEventsForDay(DateTime day) {
-    return _eventsBox.values.where((event) {
-      final start = event.startTime;
-      final end = event.endTime;
-      return (start.year == day.year && start.month == day.month && start.day == day.day) ||
-             (end.year == day.year && end.month == day.month && end.day == day.day) ||
-             (start.isBefore(day) && end.isAfter(day));
-    }).toList();
-  }
-
   void _editEvent(Event event) {
     Navigator.push(context, MaterialPageRoute(builder: (context) => EventEditScreen(event: event, onEventSaved: (updated) {
       event.title = updated.title; event.startTime = updated.startTime; event.endTime = updated.endTime;
       event.location = updated.location; event.description = updated.description; event.isAllDay = updated.isAllDay;
-      event.save(); setState(() {});
-    }, onEventDeleted: (deleted) { deleted.delete(); setState(() {}); })));
+      event.save(); 
+    }, onEventDeleted: (deleted) { deleted.delete(); })));
   }
 
   void _deleteEvent(Event event) {
@@ -282,7 +343,7 @@ class _CalendarScreenState extends State<CalendarScreen> with TickerProviderStat
       title: const Text('删除事件'), content: Text('确定要删除事件"${event.title}"吗？'),
       actions: [
         TextButton(onPressed: () => Navigator.pop(context), child: const Text('取消')),
-        TextButton(onPressed: () { event.delete(); setState(() {}); Navigator.pop(context); }, child: Text('删除', style: TextStyle(color: Theme.of(context).colorScheme.error))),
+        TextButton(onPressed: () { event.delete(); Navigator.pop(context); }, child: Text('删除', style: TextStyle(color: Theme.of(context).colorScheme.error))),
       ],
     ));
   }
@@ -322,7 +383,6 @@ class _CalendarScreenState extends State<CalendarScreen> with TickerProviderStat
           weekendTextStyle: TextStyle(color: colorScheme.error, fontWeight: FontWeight.w600),
           defaultTextStyle: TextStyle(color: colorScheme.onSurface, fontWeight: FontWeight.w500, fontSize: 16),
           outsideTextStyle: TextStyle(color: colorScheme.onSurfaceVariant.withOpacity(0.5), fontSize: 14),
-          // [新增] 标记配置
           markersMaxCount: 3,
           markersAnchor: 0.8,
         ),
@@ -336,7 +396,8 @@ class _CalendarScreenState extends State<CalendarScreen> with TickerProviderStat
         daysOfWeekStyle: DaysOfWeekStyle(weekdayStyle: TextStyle(color: colorScheme.secondary, fontWeight: FontWeight.w600), weekendStyle: TextStyle(color: colorScheme.error, fontWeight: FontWeight.w600)),
         onDaySelected: (selectedDay, focusedDay) { if (!isSameDay(_selectedDay, selectedDay)) setState(() { _selectedDay = selectedDay; _focusedDay = focusedDay; }); },
         onPageChanged: (focusedDay) => _focusedDay = focusedDay, 
-        eventLoader: _getEventsForDay, // [关键] 必须连接数据源
+        
+        eventLoader: _getEventsForDay, // 使用优化的查询
         
         calendarBuilders: CalendarBuilders(
           dowBuilder: (context, date) {
@@ -346,7 +407,6 @@ class _CalendarScreenState extends State<CalendarScreen> with TickerProviderStat
           defaultBuilder: (context, day, focusedDay) => _buildDayCell(day, colorScheme, false),
           todayBuilder: (context, day, focusedDay) => _buildDayCell(day, colorScheme, false, isToday: true),
           
-          // [新增] 绘制圆点标记
           markerBuilder: (context, day, events) {
             if (events.isEmpty) return null;
             return Positioned(
@@ -361,8 +421,8 @@ class _CalendarScreenState extends State<CalendarScreen> with TickerProviderStat
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
                       color: isSameDay(_selectedDay, day) 
-                          ? colorScheme.onPrimary.withOpacity(0.8) // 选中时为浅色
-                          : colorScheme.secondary, // 未选中时为主题色
+                          ? colorScheme.onPrimary.withOpacity(0.8) 
+                          : colorScheme.secondary,
                     ),
                   );
                 }).toList(),
@@ -390,7 +450,7 @@ class _CalendarScreenState extends State<CalendarScreen> with TickerProviderStat
       ),
       headerStyle: HeaderStyle(formatButtonVisible: false, titleCentered: true, titleTextStyle: TextStyle(color: colorScheme.onSurface, fontSize: 16, fontWeight: FontWeight.bold), leftChevronIcon: Icon(Icons.chevron_left, color: colorScheme.onSurface), rightChevronIcon: Icon(Icons.chevron_right, color: colorScheme.onSurface)),
       
-      eventLoader: _getEventsForDay, // [关键]
+      eventLoader: _getEventsForDay,
       
       calendarBuilders: CalendarBuilders(
           dowBuilder: (context, date) {
@@ -401,7 +461,6 @@ class _CalendarScreenState extends State<CalendarScreen> with TickerProviderStat
         todayBuilder: (context, day, focusedDay) => _buildDayCell(day, colorScheme, true, isToday: true),
         selectedBuilder: (context, day, focusedDay) => _buildDayCell(day, colorScheme, true, isSelected: true),
         
-        // [新增] 周视图标记
         markerBuilder: (context, day, events) {
           if (events.isEmpty) return null;
           return Positioned(
@@ -458,7 +517,7 @@ class _CalendarScreenState extends State<CalendarScreen> with TickerProviderStat
     return Scaffold(
       drawer: AppDrawer(
         onSubscriptionTap: _openSubscriptionManagement,
-        onTestNotificationTap: _testNotification,
+        onTestNotificationTap: _testNotification, // 确保侧边栏的测试按钮有效
         onImportExportTap: (value) {
           if (value == 'export_ics') _exportEventsToICS();
           else if (value == 'export_json') _exportEventsToJSON();
