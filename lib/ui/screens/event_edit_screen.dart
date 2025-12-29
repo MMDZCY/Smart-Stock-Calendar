@@ -28,6 +28,11 @@ class _EventEditScreenState extends State<EventEditScreen> {
   late DateTime _startTime;
   late DateTime _endTime;
   bool _isAllDay = false;
+  
+  // [新增] 快速标签列表
+  final List<String> _quickTags = ['买入', '卖出', '加仓', '止盈', '复盘', '打新'];
+  // [新增] 选中的标签
+  String? _selectedTag;
 
   @override
   void initState() {
@@ -79,8 +84,9 @@ class _EventEditScreenState extends State<EventEditScreen> {
   }
 
   Future<void> _pickDateTime(bool isStart) async {
+    // 保持之前的逻辑...
     final initialDate = isStart ? _startTime : _endTime;
-    FocusScope.of(context).unfocus(); // 打开弹窗前先收起键盘
+    FocusScope.of(context).unfocus();
 
     final date = await showDatePicker(
       context: context,
@@ -120,18 +126,34 @@ class _EventEditScreenState extends State<EventEditScreen> {
     });
   }
 
+  // [新增] 标签点击处理
+  void _onTagSelected(String tag) {
+    setState(() {
+      _selectedTag = tag;
+      // 自动填入标题
+      String currentText = _titleController.text;
+      // 如果已经包含这个标签，就不重复加
+      if (!currentText.contains(tag)) {
+        _titleController.text = "$tag $currentText";
+        // 光标移到最后
+        _titleController.selection = TextSelection.fromPosition(TextPosition(offset: _titleController.text.length));
+      }
+    });
+  }
+
+  Color _getTagColor(String tag) {
+    if (tag.contains('买') || tag.contains('加') || tag.contains('新')) return Colors.red.shade100;
+    if (tag.contains('卖') || tag.contains('止')) return Colors.green.shade100;
+    return Colors.blue.shade100;
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
     
-    // [关键修改] 彻底移除了 MediaQuery.of(context).viewInsets.bottom
-    // 这样键盘动的时候，页面绝对不会重绘，从根源上杜绝闪退
-
     return Scaffold(
-      // [关键配置] 禁止页面随键盘顶起
-      resizeToAvoidBottomInset: false,
-      
+      resizeToAvoidBottomInset: false, // 保持防闪退设置
       appBar: AppBar(
         title: Text(widget.event == null ? '新建日程' : '编辑日程'),
         centerTitle: true,
@@ -150,40 +172,65 @@ class _EventEditScreenState extends State<EventEditScreen> {
       ),
       body: SafeArea(
         child: SingleChildScrollView(
-          // [关键配置] 这里的 padding 是固定的，不再随键盘变化
           padding: const EdgeInsets.all(16),
           child: Form(
             key: _formKey,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // 标题
+                // [新增] 快速标签区域
+                Text('快速标签', style: TextStyle(fontSize: 12, color: colorScheme.outline, fontWeight: FontWeight.bold)),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: _quickTags.map((tag) {
+                    return ActionChip(
+                      label: Text(tag),
+                      backgroundColor: _getTagColor(tag),
+                      side: BorderSide.none,
+                      labelStyle: TextStyle(
+                        color: Colors.black87,
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold
+                      ),
+                      onPressed: () => _onTagSelected(tag),
+                    );
+                  }).toList(),
+                ),
+                const SizedBox(height: 16),
+
+                // 标题输入
                 TextFormField(
                   controller: _titleController,
                   style: theme.textTheme.headlineSmall,
                   decoration: const InputDecoration(
-                    hintText: '输入标题',
-                    border: InputBorder.none,
+                    labelText: '标题',
+                    hintText: '例如：买入茅台 100股',
+                    border: OutlineInputBorder(), // 改回带边框的样式，更正式
+                    contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 16),
                   ),
                   validator: (value) => value == null || value.isEmpty ? '请输入标题' : null,
                 ),
                 
-                const Divider(),
+                const SizedBox(height: 20),
                 
                 // 全天开关
                 SwitchListTile(
-                  title: const Text('全天'),
+                  title: const Text('全天事件'),
                   value: _isAllDay,
                   contentPadding: EdgeInsets.zero,
                   onChanged: (val) {
-                    FocusScope.of(context).unfocus(); // 点击开关收起键盘
+                    FocusScope.of(context).unfocus(); 
                     setState(() => _isAllDay = val);
                   },
                 ),
                 
+                const Divider(),
+                
                 // 时间选择
                 _buildDateTimeField('开始时间', _startTime, true, colorScheme),
-                const SizedBox(height: 12),
+                const SizedBox(height: 8),
                 _buildDateTimeField('结束时间', _endTime, false, colorScheme),
                 
                 const Divider(height: 32),
@@ -192,8 +239,8 @@ class _EventEditScreenState extends State<EventEditScreen> {
                 TextFormField(
                   controller: _locationController,
                   decoration: InputDecoration(
-                    labelText: '地点',
-                    prefixIcon: Icon(Icons.location_on_outlined, color: colorScheme.outline),
+                    labelText: '股票代码 / 地点',
+                    prefixIcon: Icon(Icons.show_chart, color: colorScheme.outline), // 图标换成股票趋势图
                     border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                   ),
                 ),
@@ -206,7 +253,7 @@ class _EventEditScreenState extends State<EventEditScreen> {
                   maxLines: 5,
                   minLines: 3,
                   decoration: InputDecoration(
-                    labelText: '备注',
+                    labelText: '交易策略 / 备注',
                     alignLabelWithHint: true,
                     prefixIcon: Icon(Icons.notes, color: colorScheme.outline),
                     border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
@@ -236,9 +283,7 @@ class _EventEditScreenState extends State<EventEditScreen> {
                     ),
                   ),
 
-                // [关键修改] 手动加一个超级大的底部垫片
-                // 这样当键盘弹出来挡住下面的输入框时，你可以手动滑动屏幕，把内容顶上去
-                const SizedBox(height: 400), 
+                const SizedBox(height: 300), // 底部垫片防遮挡
               ],
             ),
           ),
@@ -252,25 +297,18 @@ class _EventEditScreenState extends State<EventEditScreen> {
       onTap: () => _pickDateTime(isStart),
       borderRadius: BorderRadius.circular(8),
       child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 8.0),
+        padding: const EdgeInsets.symmetric(vertical: 12.0, horizontal: 8),
         child: Row(
           children: [
-            Icon(Icons.access_time, size: 20, color: colorScheme.outline),
+            Icon(Icons.access_time, size: 20, color: colorScheme.primary),
             const SizedBox(width: 12),
             Text(label, style: TextStyle(fontSize: 16, color: colorScheme.onSurface)),
             const Spacer(),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-              decoration: BoxDecoration(
-                color: colorScheme.surfaceContainerHighest,
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Text(
-                _isAllDay 
-                  ? DateFormat('yyyy年MM月dd日').format(dt)
-                  : DateFormat('MM月dd日 HH:mm').format(dt),
-                style: TextStyle(fontWeight: FontWeight.bold, color: colorScheme.onSurfaceVariant),
-              ),
+            Text(
+              _isAllDay 
+                ? DateFormat('yyyy年MM月dd日').format(dt)
+                : DateFormat('MM月dd日 HH:mm').format(dt),
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: colorScheme.primary),
             ),
           ],
         ),

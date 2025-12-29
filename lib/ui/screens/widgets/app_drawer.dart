@@ -1,16 +1,16 @@
 import 'package:flutter/material.dart';
-import '../about_screen.dart'; // 引入关于页面
+import '../statistics_screen.dart'; // [新增] 引入统计页面
 
 class AppDrawer extends StatelessWidget {
   final VoidCallback onSubscriptionTap;
-  final Function(String) onImportExportTap;
   final VoidCallback onTestNotificationTap;
+  final Function(String) onImportExportTap;
 
   const AppDrawer({
     super.key,
     required this.onSubscriptionTap,
-    required this.onImportExportTap,
     required this.onTestNotificationTap,
+    required this.onImportExportTap,
   });
 
   @override
@@ -18,177 +18,129 @@ class AppDrawer extends StatelessWidget {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
 
-    return NavigationDrawer(
-      selectedIndex: 0,
-      onDestinationSelected: (index) {
-        // 关闭侧边栏
-        Navigator.pop(context);
-
-        // 处理点击逻辑
-        // 注意：index 是根据 NavigationDrawerDestination 的顺序来的
-        switch (index) {
-          case 0:
-            // 主页 - 不做操作
-            break;
-          case 1:
-            // 订阅管理
-            onSubscriptionTap();
-            break;
-          case 2:
-            // 导入数据
-            // 延迟一点显示弹窗，等待 Drawer 关闭动画完成
-            Future.delayed(const Duration(milliseconds: 200), () {
-              if (context.mounted) _showImportDialog(context);
-            });
-            break;
-          case 3:
-            // 导出数据
-            Future.delayed(const Duration(milliseconds: 200), () {
-              if (context.mounted) _showExportDialog(context);
-            });
-            break;
-          case 4:
-            // 测试通知
-            onTestNotificationTap();
-            break;
-          case 5:
-            // 关于页面
-            Navigator.push(
-              context,
-              MaterialPageRoute(builder: (context) => const AboutScreen()),
-            );
-            break;
-        }
-      },
-      children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(28, 16, 16, 10),
-          child: Text(
-            'Smart Stock Calendar',
-            style: theme.textTheme.titleSmall?.copyWith(
-              color: colorScheme.onSurfaceVariant,
-              fontWeight: FontWeight.bold,
+    return Drawer(
+      child: ListView(
+        padding: EdgeInsets.zero,
+        children: [
+          // 头部
+          UserAccountsDrawerHeader(
+            decoration: BoxDecoration(
+              color: colorScheme.primary,
+              image: DecorationImage(
+                image: const NetworkImage('https://picsum.photos/seed/stock/800/400'), // 随机风景图，也可以换成您本地的 asset
+                fit: BoxFit.cover,
+                colorFilter: ColorFilter.mode(
+                  Colors.black.withOpacity(0.4), 
+                  BlendMode.darken
+                ),
+              ),
+            ),
+            accountName: const Text(
+              '股市日历',
+              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 20),
+            ),
+            accountEmail: const Text('记录每一笔交易与心得'),
+            currentAccountPicture: CircleAvatar(
+              backgroundColor: colorScheme.surface,
+              child: Icon(Icons.trending_up, size: 36, color: colorScheme.primary),
             ),
           ),
-        ),
-        
-        // Index 0
-        const NavigationDrawerDestination(
-          icon: Icon(Icons.calendar_month_outlined),
-          selectedIcon: Icon(Icons.calendar_month),
-          label: Text('日历主页'),
-        ),
-        
-        const Divider(indent: 28, endIndent: 28),
-        
-        Padding(
-          padding: const EdgeInsets.fromLTRB(28, 16, 16, 10),
-          child: Text(
-            '数据管理',
-            style: theme.textTheme.labelMedium?.copyWith(color: colorScheme.secondary),
+
+          // --- 功能菜单 ---
+          
+          // [新增] 交易统计入口
+          ListTile(
+            leading: Icon(Icons.bar_chart, color: colorScheme.primary),
+            title: const Text('交易统计'),
+            onTap: () {
+              Navigator.pop(context); // 关闭侧边栏
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => const StatisticsScreen()),
+              );
+            },
           ),
-        ),
 
-        // Index 1
-        const NavigationDrawerDestination(
-          icon: Icon(Icons.rss_feed_outlined),
-          selectedIcon: Icon(Icons.rss_feed),
-          label: Text('订阅管理'),
-        ),
-
-        // Index 2
-        const NavigationDrawerDestination(
-          icon: Icon(Icons.file_upload_outlined),
-          label: Text('导入数据'),
-        ),
-        
-        // Index 3
-        const NavigationDrawerDestination(
-          icon: Icon(Icons.file_download_outlined),
-          label: Text('导出数据'),
-        ),
-
-        const Divider(indent: 28, endIndent: 28),
-        
-        Padding(
-          padding: const EdgeInsets.fromLTRB(28, 16, 16, 10),
-          child: Text(
-            '其他',
-            style: theme.textTheme.labelMedium?.copyWith(color: colorScheme.secondary),
+          ListTile(
+            leading: const Icon(Icons.rss_feed),
+            title: const Text('日历订阅管理'),
+            onTap: () {
+              Navigator.pop(context);
+              onSubscriptionTap();
+            },
           ),
-        ),
-        
-        // Index 4
-        const NavigationDrawerDestination(
-          icon: Icon(Icons.notifications_active_outlined),
-          label: Text('测试通知'),
-        ),
+          
+          const Divider(),
 
-        // Index 5
-        const NavigationDrawerDestination(
-          icon: Icon(Icons.info_outline),
-          label: Text('关于应用'),
-        ),
-      ],
-    );
-  }
+          ListTile(
+            leading: const Icon(Icons.notifications_active),
+            title: const Text('测试通知'),
+            subtitle: const Text('发送一条立即显示的测试通知'),
+            onTap: () {
+              Navigator.pop(context);
+              onTestNotificationTap();
+            },
+          ),
 
-  void _showImportDialog(BuildContext context) {
-    showModalBottomSheet(
-      context: context,
-      showDragHandle: true,
-      builder: (context) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(
-              leading: const Icon(Icons.calendar_today),
-              title: const Text('从 ICS 文件导入'),
-              onTap: () {
-                Navigator.pop(context);
-                onImportExportTap('import_ics');
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.javascript),
-              title: const Text('从 JSON 文件导入'),
-              onTap: () {
-                Navigator.pop(context);
-                onImportExportTap('import_json');
-              },
-            ),
-          ],
-        ),
-      ),
-    );
-  }
+          const Divider(),
+          
+          Padding(
+            padding: const EdgeInsets.only(left: 16, top: 8, bottom: 8),
+            child: Text('数据备份与恢复', style: TextStyle(color: colorScheme.outline, fontSize: 12)),
+          ),
 
-  void _showExportDialog(BuildContext context) {
-    showModalBottomSheet(
-      context: context,
-      showDragHandle: true,
-      builder: (context) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(
-              leading: const Icon(Icons.calendar_today),
-              title: const Text('导出为 ICS'),
-              onTap: () {
-                Navigator.pop(context);
-                onImportExportTap('export_ics');
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.javascript),
-              title: const Text('导出为 JSON'),
-              onTap: () {
-                Navigator.pop(context);
-                onImportExportTap('export_json');
-              },
-            ),
-          ],
-        ),
+          ListTile(
+            leading: const Icon(Icons.file_upload),
+            title: const Text('导出日历 (ICS)'),
+            onTap: () {
+              Navigator.pop(context);
+              onImportExportTap('export_ics');
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.javascript), // JSON icon substitute
+            title: const Text('导出数据 (JSON)'),
+            onTap: () {
+              Navigator.pop(context);
+              onImportExportTap('export_json');
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.file_download),
+            title: const Text('导入日历 (ICS)'),
+            onTap: () {
+              Navigator.pop(context);
+              onImportExportTap('import_ics');
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.restore),
+            title: const Text('恢复数据 (JSON)'),
+            onTap: () {
+              Navigator.pop(context);
+              onImportExportTap('import_json');
+            },
+          ),
+          
+          const Divider(),
+          
+          ListTile(
+            leading: const Icon(Icons.info_outline),
+            title: const Text('关于'),
+            onTap: () {
+              Navigator.pop(context);
+              showAboutDialog(
+                context: context,
+                applicationName: '股市日历',
+                applicationVersion: '1.0.0',
+                applicationIcon: Icon(Icons.calendar_month, size: 48, color: colorScheme.primary),
+                children: [
+                  const Text('一个专为股民打造的日历应用，集成了农历、股市行情与交易记录功能。'),
+                ],
+              );
+            },
+          ),
+        ],
       ),
     );
   }
