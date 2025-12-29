@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:table_calendar/table_calendar.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
-import 'package:flutter/services.dart';
+import 'package:flutter/services.dart'; // 用于震动反馈
 import '../../data/models/event.dart';
 import '../../data/models/calendar_subscription.dart';
 import '../../utils/import_export.dart';
@@ -13,7 +13,6 @@ import 'widgets/app_drawer.dart';
 import 'event_edit_screen.dart';
 import 'subscription_management_screen.dart';
 import 'stock_market_data_screen.dart';
-
 
 class CalendarScreen extends StatefulWidget {
   const CalendarScreen({super.key});
@@ -37,7 +36,7 @@ class _CalendarScreenState extends State<CalendarScreen> with TickerProviderStat
   late final ImportExportManager _importExportManager;
   late final SubscriptionManager _subscriptionManager;
 
-  // [性能优化] 内存缓存
+  // 内存缓存
   Map<DateTime, List<Event>> _eventsCache = {};
   
   @override
@@ -60,19 +59,16 @@ class _CalendarScreenState extends State<CalendarScreen> with TickerProviderStat
     _updateEventsCache();
     _eventsBox.listenable().addListener(_updateEventsCache);
     
-    // [恢复功能] 恢复通知初始化和提醒调度
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       try {
         await _initNotifications();
         _scheduleEventReminders();
-        // 监听数据库变化，实时更新提醒
         _eventsBox.listenable().addListener(_scheduleEventReminders);
       } catch (e) {
         debugPrint('初始化通知服务时出错: $e');
       }
     });
     
-    // 自动同步订阅
     WidgetsBinding.instance.addPostFrameCallback((_) {
       try {
         _autoSyncSubscriptions();
@@ -82,10 +78,8 @@ class _CalendarScreenState extends State<CalendarScreen> with TickerProviderStat
     });
   }
 
-  // [性能优化] 更新缓存
   void _updateEventsCache() {
     final Map<DateTime, List<Event>> newCache = {};
-
     for (final event in _eventsBox.values) {
       DateTime rangeDate = event.startTime;
       final endDate = event.endTime;
@@ -99,72 +93,43 @@ class _CalendarScreenState extends State<CalendarScreen> with TickerProviderStat
         current = current.add(const Duration(days: 1));
       } while (current.isBefore(normEnd) || isSameDay(current, normEnd));
     }
-
-    if (mounted) {
-      setState(() {
-        _eventsCache = newCache;
-      });
-    }
+    if (mounted) setState(() => _eventsCache = newCache);
   }
 
-  // [性能优化] O(1) 查询
   List<Event> _getEventsForDay(DateTime day) {
     final normalizedDay = DateTime(day.year, day.month, day.day);
     return _eventsCache[normalizedDay] ?? [];
   }
 
-  // [恢复功能] 初始化通知
   Future<void> _initNotifications() async {
     try {
-      const AndroidInitializationSettings androidSettings =
-          AndroidInitializationSettings('@mipmap/ic_launcher');
-      const DarwinInitializationSettings iosSettings =
-          DarwinInitializationSettings();
-      const InitializationSettings settings = InitializationSettings(
-        android: androidSettings,
-        iOS: iosSettings,
-      );
+      const AndroidInitializationSettings androidSettings = AndroidInitializationSettings('@mipmap/ic_launcher');
+      const DarwinInitializationSettings iosSettings = DarwinInitializationSettings();
+      const InitializationSettings settings = InitializationSettings(android: androidSettings, iOS: iosSettings);
       await _notifications.initialize(settings);
       
       const AndroidNotificationChannel channel = AndroidNotificationChannel(
-        'event_reminder_channel',
-        '事件提醒',
-        description: '日历事件提醒通知',
-        importance: Importance.high,
+        'event_reminder_channel', '事件提醒', importance: Importance.high,
       );
-      
-      await _notifications
-          .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()
-          ?.createNotificationChannel(channel);
-    } catch (e) {
-      debugPrint('初始化通知服务失败: $e');
-    }
+      await _notifications.resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()?.createNotificationChannel(channel);
+    } catch (e) { debugPrint('初始化通知失败: $e'); }
   }
 
-  // [恢复功能] 调度所有提醒
   void _scheduleEventReminders() {
+    try { _notifications.resolvePlatformSpecificImplementation; } catch (e) { return; }
     try {
-      // 简单判断一下插件是否可用
-      _notifications.resolvePlatformSpecificImplementation;
-    } catch (e) { return; }
-    
-    try {
-      _notifications.cancelAll(); // 先清除旧的，避免重复
+      _notifications.cancelAll();
       for (final event in _eventsBox.values) {
         _scheduleEventReminder(event);
       }
-    } catch (e) {
-      debugPrint('设置事件提醒时出错: $e');
-    }
+    } catch (e) { debugPrint('设置提醒出错: $e'); }
   }
   
-  // [恢复功能] 设置单个事件的提醒
   Future<void> _scheduleEventReminder(Event event) async {
     final now = DateTime.now();
     final eventStart = event.startTime;
     if (eventStart.isBefore(now)) return;
     
-    // 提醒策略：开始前30分钟、1小时、24小时
     final reminderTimes = [
       eventStart.subtract(const Duration(minutes: 30)),
       eventStart.subtract(const Duration(hours: 1)),
@@ -173,27 +138,13 @@ class _CalendarScreenState extends State<CalendarScreen> with TickerProviderStat
     
     for (final reminderTime in reminderTimes) {
       if (reminderTime.isBefore(now)) continue;
-      
       final delay = reminderTime.difference(now).inMilliseconds;
-      // 生成唯一的 ID
       final notificationId = (event.id.hashCode % 1000000) + (reminderTime.millisecondsSinceEpoch % 1000);
       
-      // 使用简单的延时显示 (注：生产环境建议使用 zonedSchedule，但为了保持代码一致性，恢复原逻辑)
       Future.delayed(Duration(milliseconds: delay), () {
         _notifications.show(
-          notificationId,
-          '事件提醒：${event.title}',
-          '事件将在${_getReminderText(reminderTime, eventStart)}开始',
-          const NotificationDetails(
-            android: AndroidNotificationDetails(
-              'event_reminder_channel',
-              '事件提醒',
-              channelDescription: '日历事件提醒通知',
-              importance: Importance.high,
-              priority: Priority.high,
-            ),
-            iOS: DarwinNotificationDetails(),
-          ),
+          notificationId, '事件提醒：${event.title}', '事件将在${_getReminderText(reminderTime, eventStart)}开始',
+          const NotificationDetails(android: AndroidNotificationDetails('event_reminder_channel', '事件提醒', importance: Importance.high), iOS: DarwinNotificationDetails()),
         );
       });
     }
@@ -206,98 +157,59 @@ class _CalendarScreenState extends State<CalendarScreen> with TickerProviderStat
     if (difference.inHours == 24) return '24小时后';
     return '${difference.inMinutes}分钟后';
   }
+
+  void _jumpToToday() {
+    final now = DateTime.now();
+    setState(() {
+      _focusedDay = now;
+      _selectedDay = now;
+      _currentViewIndex = 1; // 强制切回月视图
+    });
+    HapticFeedback.mediumImpact();
+  }
   
-  // [恢复功能] 测试通知按钮功能
-  Future<void> _testNotification() async {
-    try {
-       await _notifications.show(
-        9999, 
-        '测试通知', 
-        '通知功能已恢复正常', 
-        const NotificationDetails(
-          android: AndroidNotificationDetails(
-            'event_reminder_channel', 
-            '事件提醒', 
-            importance: Importance.high
-          ), 
-          iOS: DarwinNotificationDetails()
+  // [修复] 快速添加事件，补全了 onEventSaved 参数
+  void _quickAddEvent() {
+    Navigator.push(
+      context, 
+      MaterialPageRoute(
+        builder: (context) => EventEditScreen(
+          // 传入选中的日期，或者今天
+          selectedDate: _selectedDay ?? DateTime.now(),
+          
+          // [关键修复] 当新事件保存时，将其添加到 Hive 盒子中
+          onEventSaved: (newEvent) async {
+            await _eventsBox.add(newEvent);
+            // 监听器会自动更新缓存和 UI，无需手动 setState
+          },
+          
+          // [关键修复] 必须提供删除回调，虽然新事件一般不会在这里被删除
+          onEventDeleted: (event) {
+             // 空实现
+          },
         )
-      );
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('已发送测试通知')));
-    } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('测试通知失败: $e')));
-    }
+      )
+    );
   }
 
-  // --- 以下保持不变 ---
-
-  Future<void> _autoSyncSubscriptions() async {
-    try {
-      final results = await _subscriptionManager.syncAllSubscriptions();
-      if (results.isNotEmpty && mounted) {
-        // debugPrint('订阅同步完成: $results');
-      }
-    } catch (e) {
-      // 静默失败
-    }
-  }
-  
+  // Helper methods
+  Future<void> _autoSyncSubscriptions() async { try { await _subscriptionManager.syncAllSubscriptions(); } catch (e) {} }
   Future<void> _syncSubscriptions() async {
     try {
       final results = await _subscriptionManager.syncAllSubscriptions();
       if (mounted) {
         String message = '订阅同步完成：\n';
-        results.forEach((name, count) {
-          message += count >= 0 ? '$name: $count 个事件\n' : '$name: 同步失败\n';
-        });
+        results.forEach((name, count) => message += count >= 0 ? '$name: $count 个事件\n' : '$name: 同步失败\n');
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
       }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('订阅同步失败: $e')));
-      }
-    }
+    } catch (e) { if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('同步失败: $e'))); }
   }
-  
-  void _openSubscriptionManagement() {
-    Navigator.push(
-      context,
-      MaterialPageRoute(builder: (context) => SubscriptionManagementScreen(subscriptionManager: _subscriptionManager)),
-    ).then((_) {
-      _updateEventsCache(); 
-    }); 
-  }
-  
-  Future<void> _exportEventsToICS() async {
-    try {
-      final icsContent = await _importExportManager.exportEventsToICS();
-      await Clipboard.setData(ClipboardData(text: icsContent));
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('ICS已复制到剪贴板')));
-    } catch (e) { if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('导出失败: $e'))); }
-  }
-  Future<void> _exportEventsToJSON() async {
-    try {
-      final jsonContent = await _importExportManager.exportEventsToJSON();
-      await Clipboard.setData(ClipboardData(text: jsonContent));
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('JSON已复制到剪贴板')));
-    } catch (e) { if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('导出失败: $e'))); }
-  }
-  Future<void> _importEventsFromICS() async {
-    try {
-      final data = await Clipboard.getData('text/plain');
-      if (data?.text == null) return;
-      final count = await _importExportManager.importEventsFromICS(data!.text!);
-      if (mounted) { ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('导入 $count 个事件'))); }
-    } catch (e) { if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('导入失败: $e'))); }
-  }
-  Future<void> _importEventsFromJSON() async {
-    try {
-      final data = await Clipboard.getData('text/plain');
-      if (data?.text == null) return;
-      final count = await _importExportManager.importEventsFromJSON(data!.text!);
-      if (mounted) { ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('导入 $count 个事件'))); }
-    } catch (e) { if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('导入失败: $e'))); }
-  }
+  void _openSubscriptionManagement() { Navigator.push(context, MaterialPageRoute(builder: (context) => SubscriptionManagementScreen(subscriptionManager: _subscriptionManager))).then((_) => _updateEventsCache()); }
+  Future<void> _exportEventsToICS() async { try { final ics = await _importExportManager.exportEventsToICS(); await Clipboard.setData(ClipboardData(text: ics)); if(mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('ICS已复制'))); } catch(e){} }
+  Future<void> _exportEventsToJSON() async { try { final json = await _importExportManager.exportEventsToJSON(); await Clipboard.setData(ClipboardData(text: json)); if(mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('JSON已复制'))); } catch(e){} }
+  Future<void> _importEventsFromICS() async { try { final data = await Clipboard.getData('text/plain'); if(data?.text!=null) { await _importExportManager.importEventsFromICS(data!.text!); if(mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('导入完成'))); } } catch(e){} }
+  Future<void> _importEventsFromJSON() async { try { final data = await Clipboard.getData('text/plain'); if(data?.text!=null) { await _importExportManager.importEventsFromJSON(data!.text!); if(mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('导入完成'))); } } catch(e){} }
+  Future<void> _testNotification() async { try { await _notifications.show(9999, '测试通知', '通知功能正常', const NotificationDetails(android: AndroidNotificationDetails('event_reminder_channel', '事件提醒', importance: Importance.high), iOS: DarwinNotificationDetails())); } catch(e){} }
 
   @override
   void dispose() {
@@ -309,6 +221,7 @@ class _CalendarScreenState extends State<CalendarScreen> with TickerProviderStat
   
   void _handleViewChange(int newIndex) {
     if (newIndex == _currentViewIndex) return;
+    HapticFeedback.selectionClick(); 
     _opacityController.reverse().then((_) {
       setState(() {
         _currentViewIndex = newIndex;
@@ -327,18 +240,18 @@ class _CalendarScreenState extends State<CalendarScreen> with TickerProviderStat
   }
   
   void _handleDoubleTapDay(DateTime day) {
+    HapticFeedback.mediumImpact(); 
     Navigator.push(context, MaterialPageRoute(builder: (context) => StockMarketDataScreen(selectedDate: day, eventsBox: _eventsBox)));
   }
 
   void _editEvent(Event event) {
     Navigator.push(context, MaterialPageRoute(builder: (context) => EventEditScreen(event: event, onEventSaved: (updated) {
-      event.title = updated.title; event.startTime = updated.startTime; event.endTime = updated.endTime;
-      event.location = updated.location; event.description = updated.description; event.isAllDay = updated.isAllDay;
       event.save(); 
     }, onEventDeleted: (deleted) { deleted.delete(); })));
   }
 
   void _deleteEvent(Event event) {
+    HapticFeedback.heavyImpact(); 
     showDialog(context: context, builder: (context) => AlertDialog(
       title: const Text('删除事件'), content: Text('确定要删除事件"${event.title}"吗？'),
       actions: [
@@ -394,10 +307,19 @@ class _CalendarScreenState extends State<CalendarScreen> with TickerProviderStat
           decoration: BoxDecoration(color: colorScheme.surface, borderRadius: const BorderRadius.vertical(top: Radius.circular(20))),
         ),
         daysOfWeekStyle: DaysOfWeekStyle(weekdayStyle: TextStyle(color: colorScheme.secondary, fontWeight: FontWeight.w600), weekendStyle: TextStyle(color: colorScheme.error, fontWeight: FontWeight.w600)),
-        onDaySelected: (selectedDay, focusedDay) { if (!isSameDay(_selectedDay, selectedDay)) setState(() { _selectedDay = selectedDay; _focusedDay = focusedDay; }); },
-        onPageChanged: (focusedDay) => _focusedDay = focusedDay, 
         
-        eventLoader: _getEventsForDay, // 使用优化的查询
+        onDaySelected: (selectedDay, focusedDay) { 
+          if (!isSameDay(_selectedDay, selectedDay)) {
+            HapticFeedback.selectionClick(); 
+            setState(() { _selectedDay = selectedDay; _focusedDay = focusedDay; });
+          }
+        },
+        onPageChanged: (focusedDay) {
+          HapticFeedback.lightImpact(); 
+          _focusedDay = focusedDay;
+        },
+        
+        eventLoader: _getEventsForDay, 
         
         calendarBuilders: CalendarBuilders(
           dowBuilder: (context, date) {
@@ -406,28 +328,9 @@ class _CalendarScreenState extends State<CalendarScreen> with TickerProviderStat
           },
           defaultBuilder: (context, day, focusedDay) => _buildDayCell(day, colorScheme, false),
           todayBuilder: (context, day, focusedDay) => _buildDayCell(day, colorScheme, false, isToday: true),
-          
           markerBuilder: (context, day, events) {
             if (events.isEmpty) return null;
-            return Positioned(
-              bottom: 6,
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: events.take(3).map((event) {
-                  return Container(
-                    margin: const EdgeInsets.symmetric(horizontal: 1),
-                    width: 5,
-                    height: 5,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: isSameDay(_selectedDay, day) 
-                          ? colorScheme.onPrimary.withOpacity(0.8) 
-                          : colorScheme.secondary,
-                    ),
-                  );
-                }).toList(),
-              ),
-            );
+            return Positioned(bottom: 6, child: Row(mainAxisSize: MainAxisSize.min, children: events.take(3).map((event) => Container(margin: const EdgeInsets.symmetric(horizontal: 1), width: 5, height: 5, decoration: BoxDecoration(shape: BoxShape.circle, color: isSameDay(_selectedDay, day) ? colorScheme.onPrimary.withOpacity(0.8) : colorScheme.secondary))).toList()));
           },
         ),
       ),
@@ -452,6 +355,17 @@ class _CalendarScreenState extends State<CalendarScreen> with TickerProviderStat
       
       eventLoader: _getEventsForDay,
       
+      onDaySelected: (selectedDay, focusedDay) {
+        if (!isSameDay(_selectedDay, selectedDay)) {
+          HapticFeedback.selectionClick();
+          setState(() { _selectedDay = selectedDay; _focusedDay = focusedDay; });
+        }
+      },
+      onPageChanged: (focusedDay) {
+        HapticFeedback.lightImpact();
+        _focusedDay = focusedDay;
+      },
+      
       calendarBuilders: CalendarBuilders(
           dowBuilder: (context, date) {
             final weekday = date.weekday % 7; final weekdays = ['日', '一', '二', '三', '四', '五', '六'];
@@ -460,22 +374,9 @@ class _CalendarScreenState extends State<CalendarScreen> with TickerProviderStat
         defaultBuilder: (context, day, focusedDay) => _buildDayCell(day, colorScheme, true),
         todayBuilder: (context, day, focusedDay) => _buildDayCell(day, colorScheme, true, isToday: true),
         selectedBuilder: (context, day, focusedDay) => _buildDayCell(day, colorScheme, true, isSelected: true),
-        
         markerBuilder: (context, day, events) {
           if (events.isEmpty) return null;
-          return Positioned(
-            bottom: 4,
-            child: Container(
-              width: 5,
-              height: 5,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: isSameDay(_selectedDay, day) 
-                    ? colorScheme.onPrimary.withOpacity(0.8) 
-                    : colorScheme.secondary,
-              ),
-            ),
-          );
+          return Positioned(bottom: 4, child: Container(width: 5, height: 5, decoration: BoxDecoration(shape: BoxShape.circle, color: isSameDay(_selectedDay, day) ? colorScheme.onPrimary.withOpacity(0.8) : colorScheme.secondary)));
         },
       ),
     );
@@ -483,6 +384,8 @@ class _CalendarScreenState extends State<CalendarScreen> with TickerProviderStat
 
   Widget _buildDayCell(DateTime day, ColorScheme colorScheme, bool isWeekView, {bool isToday = false, bool isSelected = false}) {
     bool isHoliday = LunarUtils.isHoliday(day);
+    bool isRestDay = day.weekday == 6 || day.weekday == 7 || isHoliday;
+    
     final lunarDate = LunarUtils.solarToLunar(day);
     Color textColor;
     if (isSelected) textColor = colorScheme.onPrimary;
@@ -491,19 +394,26 @@ class _CalendarScreenState extends State<CalendarScreen> with TickerProviderStat
 
     return GestureDetector(
       onDoubleTap: () => _handleDoubleTapDay(day),
-      child: Container(
-        margin: const EdgeInsets.all(2), alignment: Alignment.center,
-        decoration: isSelected 
-          ? BoxDecoration(color: colorScheme.primary, shape: BoxShape.circle) 
-          : (isToday ? BoxDecoration(shape: BoxShape.circle, border: Border.all(color: colorScheme.primary, width: 2), color: colorScheme.secondaryContainer) : null),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Text(day.day.toString(), style: TextStyle(color: textColor, fontWeight: FontWeight.bold, fontSize: 14)),
-            Text(lunarDate.getShortDescription().split('月')[1], style: TextStyle(fontSize: 10, color: textColor.withOpacity(0.7))),
-            if (isHoliday && !isSelected && !isToday) Container(margin: const EdgeInsets.only(top: 2), width: 4, height: 4, decoration: BoxDecoration(color: colorScheme.error, shape: BoxShape.circle)),
-          ],
-        ),
+      child: Stack(
+        children: [
+          Container(
+            margin: const EdgeInsets.all(2), alignment: Alignment.center,
+            decoration: isSelected 
+              ? BoxDecoration(color: colorScheme.primary, shape: BoxShape.circle) 
+              : (isToday ? BoxDecoration(shape: BoxShape.circle, border: Border.all(color: colorScheme.primary, width: 2), color: colorScheme.secondaryContainer) : null),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Text(day.day.toString(), style: TextStyle(color: textColor, fontWeight: FontWeight.bold, fontSize: 14)),
+                Text(lunarDate.getShortDescription().split('月')[1], style: TextStyle(fontSize: 10, color: textColor.withOpacity(0.7))),
+              ],
+            ),
+          ),
+          if (isRestDay && !isSelected && !isToday)
+            Positioned(right: 8, top: 8, child: Text('休', style: TextStyle(fontSize: 8, color: colorScheme.outline.withOpacity(0.6)))),
+          if (isHoliday && !isSelected && !isToday && !isRestDay) 
+             Positioned(right: 8, top: 8, child: Container(width: 4, height: 4, decoration: BoxDecoration(color: colorScheme.error, shape: BoxShape.circle))),
+        ],
       ),
     );
   }
@@ -517,7 +427,7 @@ class _CalendarScreenState extends State<CalendarScreen> with TickerProviderStat
     return Scaffold(
       drawer: AppDrawer(
         onSubscriptionTap: _openSubscriptionManagement,
-        onTestNotificationTap: _testNotification, // 确保侧边栏的测试按钮有效
+        onTestNotificationTap: _testNotification,
         onImportExportTap: (value) {
           if (value == 'export_ics') _exportEventsToICS();
           else if (value == 'export_json') _exportEventsToJSON();
@@ -557,6 +467,11 @@ class _CalendarScreenState extends State<CalendarScreen> with TickerProviderStat
         
         actions: [
           IconButton(
+            icon: const Icon(Icons.today),
+            tooltip: '回到今天',
+            onPressed: _jumpToToday,
+          ),
+          IconButton(
             icon: const Icon(Icons.sync),
             tooltip: '同步所有订阅',
             onPressed: _syncSubscriptions,
@@ -577,10 +492,23 @@ class _CalendarScreenState extends State<CalendarScreen> with TickerProviderStat
                       builder: (context, box, _) {
                         final events = _getEventsForDay(_selectedDay!).cast<Event>();
                         if (events.isEmpty) {
-                          return Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-                            Icon(Icons.event_busy, size: 48, color: colorScheme.outline.withOpacity(0.5)),
-                            const SizedBox(height: 8), Text('当天无事件', style: TextStyle(color: colorScheme.onSurfaceVariant)),
-                          ]));
+                          // [优化] 空状态下增加快速添加按钮
+                          return Center(
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center, 
+                              children: [
+                                Icon(Icons.event_available, size: 48, color: colorScheme.outline.withOpacity(0.5)),
+                                const SizedBox(height: 12),
+                                Text('当天无事件', style: TextStyle(color: colorScheme.onSurfaceVariant)),
+                                const SizedBox(height: 16),
+                                FilledButton.tonalIcon(
+                                  onPressed: _quickAddEvent,
+                                  icon: const Icon(Icons.add),
+                                  label: const Text('添加日程'),
+                                )
+                              ]
+                            )
+                          );
                         }
                         return ListView.builder(
                           itemCount: events.length,

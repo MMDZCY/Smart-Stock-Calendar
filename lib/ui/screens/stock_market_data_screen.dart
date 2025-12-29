@@ -4,9 +4,9 @@ import 'dart:async';
 import 'package:http/http.dart' as http;
 import 'package:hive/hive.dart';
 import '../../data/models/event.dart';
-import '../../utils/lunar_utils.dart'; // [新增] 引入日期工具类用于判断节假日
+import '../../utils/lunar_utils.dart';
 
-// AkShare API服务类
+// AkShare API服务类 (保持不变)
 class AkShareApiService {
   final String baseUrl;
   final http.Client client;
@@ -87,6 +87,8 @@ class StockMarketDataScreen extends StatefulWidget {
 }
 
 class _StockMarketDataScreenState extends State<StockMarketDataScreen> {
+  static final Map<String, Map<String, dynamic>> _dataCache = {};
+
   List<Map<String, dynamic>> _majorIndices = [];
   List<Map<String, dynamic>> _hotSectors = [];
   bool _isLoading = true;
@@ -197,6 +199,20 @@ class _StockMarketDataScreenState extends State<StockMarketDataScreen> {
     try {
       if (mounted) setState(() => _dataFetchFailed = false);
       
+      String dateKey = '${widget.selectedDate.year}${widget.selectedDate.month}${widget.selectedDate.day}';
+
+      if (_dataCache.containsKey(dateKey)) {
+        final cachedData = _dataCache[dateKey]!;
+        if (mounted) {
+          setState(() {
+            _majorIndices = List<Map<String, dynamic>>.from(cachedData['indices']);
+            _hotSectors = List<Map<String, dynamic>>.from(cachedData['sectors']);
+            _isLoading = false;
+          });
+        }
+        return;
+      }
+      
       bool isServiceAvailable = await _akShareApiService.checkServiceAvailability();
       if (!isServiceAvailable) {
         await Future.delayed(const Duration(seconds: 1));
@@ -207,6 +223,13 @@ class _StockMarketDataScreenState extends State<StockMarketDataScreen> {
         _fetchIndicesFromAkShare(widget.selectedDate),
         _fetchSectorsDataFromAkShare(widget.selectedDate),
       ]);
+      
+      if ((results[0] || results[1]) && !_dataFetchFailed) {
+        _dataCache[dateKey] = {
+          'indices': _majorIndices,
+          'sectors': _hotSectors,
+        };
+      }
       
       if (!results[0] && !results[1]) _handleDataFetchFailure();
     } catch (e) {
@@ -357,6 +380,10 @@ class _StockMarketDataScreenState extends State<StockMarketDataScreen> {
             icon: Icon(Icons.refresh, color: colorScheme.primary),
             tooltip: '刷新数据',
             onPressed: () {
+              // 强制刷新：先清空当前日期的缓存，再请求
+              String dateKey = '${widget.selectedDate.year}${widget.selectedDate.month}${widget.selectedDate.day}';
+              _dataCache.remove(dateKey);
+              
               setState(() {
                 _isLoading = true;
                 _dataFetchFailed = false;
@@ -367,11 +394,22 @@ class _StockMarketDataScreenState extends State<StockMarketDataScreen> {
         ],
       ),
       body: _dataFetchFailed ? _buildErrorView(colorScheme) : _buildContent(formattedDate, weekday, theme, colorScheme),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _addNewEvent,
-        backgroundColor: colorScheme.primaryContainer,
-        foregroundColor: colorScheme.onPrimaryContainer,
-        child: const Icon(Icons.add),
+      
+      // [核心修改] 替换 FloatingActionButton 为 底部操作栏
+      // 这看起来更专业，且不会遮挡列表内容
+      bottomNavigationBar: BottomAppBar(
+        color: colorScheme.surface,
+        elevation: 2,
+        height: 72,
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        child: FilledButton.icon(
+          onPressed: _addNewEvent,
+          icon: const Icon(Icons.add_circle_outline),
+          label: const Text('添加当日日程', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+          style: FilledButton.styleFrom(
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          ),
+        ),
       ),
     );
   }
@@ -399,15 +437,12 @@ class _StockMarketDataScreenState extends State<StockMarketDataScreen> {
   }
 
   Widget _buildContent(String formattedDate, String weekday, ThemeData theme, ColorScheme colorScheme) {
-    // [修改] 增加交易日判断逻辑
     bool isWeekend = widget.selectedDate.weekday == 6 || widget.selectedDate.weekday == 7;
     bool isHoliday = LunarUtils.isHoliday(widget.selectedDate);
-    // 简单判断：非周末且非节假日为交易日
-    // (注：这不包含调休补班的情况，但已足够准确覆盖大部分场景)
     bool isTradingDay = !isWeekend && !isHoliday;
 
     return ListView(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 32), // 底部留白给 BottomAppBar
       children: [
         Card(
           elevation: 0,
@@ -438,13 +473,12 @@ class _StockMarketDataScreenState extends State<StockMarketDataScreen> {
                         Text("星期$weekday", style: theme.textTheme.bodyMedium?.copyWith(color: colorScheme.onSurfaceVariant)),
                         const SizedBox(width: 12),
                         
-                        // [修改] 动态显示 交易日/休市
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                           decoration: BoxDecoration(
                             color: isTradingDay 
-                                ? colorScheme.secondaryContainer // 交易日：高亮
-                                : colorScheme.surfaceDim,        // 休市：灰色
+                                ? colorScheme.secondaryContainer 
+                                : colorScheme.surfaceDim,
                             borderRadius: BorderRadius.circular(4),
                           ),
                           child: Row(
@@ -572,8 +606,6 @@ class _StockMarketDataScreenState extends State<StockMarketDataScreen> {
               onTap: () => _editEvent(event),
             ),
           )),
-          
-        const SizedBox(height: 80),
       ],
     );
   }
