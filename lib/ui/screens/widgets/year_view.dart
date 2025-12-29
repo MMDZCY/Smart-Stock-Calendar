@@ -21,15 +21,13 @@ class _YearViewState extends State<YearView> {
   late int _focusedYear;
   final int _startYear = 2020;
   final int _endYear = 2035;
-  bool _isScrolling = false; // 防止重复滚动
-  Timer? _scrollTimer; // 滚动防抖计时器
+  bool _isScrolling = false;
+  Timer? _scrollTimer;
   
   @override
   void initState() {
     super.initState();
     _focusedYear = widget.focusedDay.year.clamp(_startYear, _endYear);
-    // 创建ScrollController时设置一个初始估计值
-    // 这是一个临时值，会在didChangeDependencies中更新
     _scrollController = ScrollController(initialScrollOffset: 0.0);
   }
   
@@ -37,14 +35,15 @@ class _YearViewState extends State<YearView> {
   void didChangeDependencies() {
     super.didChangeDependencies();
     
-    // 简化的滚动位置设置
+    // 计算初始滚动位置
+    // 注意：这里使用较小的系数来匹配 Item 的实际高度
+    final itemHeight = MediaQuery.of(context).size.height * 0.90; 
     final targetIndex = _focusedYear - _startYear;
-    final itemHeight = MediaQuery.of(context).size.height * 0.95;
     final correctScrollOffset = targetIndex * itemHeight;
     
-    // 只在需要时设置滚动位置
     if (!_scrollController.hasClients) {
-      _scrollController.dispose();
+      // 重新创建 Controller 以应用初始偏移量
+      // _scrollController.dispose(); // 不需要 dispose 旧的，因为还没 attach
       _scrollController = ScrollController(initialScrollOffset: correctScrollOffset);
     }
   }
@@ -58,14 +57,12 @@ class _YearViewState extends State<YearView> {
     }
   }
   
-  // 安全的滚动方法，使用jumpTo实现瞬间定位
   void _safeScrollToYear(int year) {
-    // 直接计算并设置滚动位置，不使用动画
     if (!_isScrolling && _scrollController.hasClients && 
         year >= _startYear && year <= _endYear) {
       _isScrolling = true;
       
-      final double itemHeight = MediaQuery.of(context).size.height * 0.95;
+      final double itemHeight = MediaQuery.of(context).size.height * 0.90;
       final int yearIndex = year - _startYear;
       final double targetPosition = yearIndex * itemHeight;
       
@@ -73,8 +70,6 @@ class _YearViewState extends State<YearView> {
       _isScrolling = false;
     }
   }
-  
-
 
   @override
   void dispose() {
@@ -96,26 +91,24 @@ class _YearViewState extends State<YearView> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
     final screenHeight = MediaQuery.of(context).size.height;
     
     return RepaintBoundary(
       child: Container(
-        color: Colors.white, // 白色背景，与月视图统一
+        color: colorScheme.surface, // [修改] 跟随主题背景色
         width: double.infinity,
         height: double.infinity,
         child: ListView.builder(
           controller: _scrollController,
           physics: const BouncingScrollPhysics(),
           itemCount: _endYear - _startYear + 1,
-          // 优化预加载范围，只预加载当前页和前后各一页
           cacheExtent: screenHeight * 1.5,
-          // 启用自动保活，避免滚动时重复构建
           addAutomaticKeepAlives: true,
-          // 启用重绘边界，减少不必要的重建
           addRepaintBoundaries: true,
           itemBuilder: (context, index) {
             final year = _startYear + index;
-            // 缓存农历年份计算结果
             final lunarYear = getLunarYear(year);
             return _YearPage(
               year: year,
@@ -142,49 +135,70 @@ class _YearPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // 获取屏幕高度并设置每个年份页面的固定高度
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
     final screenHeight = MediaQuery.of(context).size.height;
-    // 设置一个接近屏幕高度但稍小的值，确保内容完全显示且无多余空白
-    final fixedHeight = screenHeight * 0.95;
+    // 稍微调小一点高度占比，让年份之间有更自然的间隔
+    final fixedHeight = screenHeight * 0.90;
     
     return SizedBox(
       height: fixedHeight,
-      child: Container(
-        padding: const EdgeInsets.all(2.0),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(
-              children: [
-                Text(
-                  '$year年',
-                  style: const TextStyle(
-                    fontSize: 24,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.black, 
+            // 年份标题栏
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 12.0, horizontal: 8.0),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.baseline,
+                textBaseline: TextBaseline.alphabetic,
+                children: [
+                  Text(
+                    '$year',
+                    style: theme.textTheme.displaySmall?.copyWith(
+                      fontWeight: FontWeight.bold,
+                      color: colorScheme.onSurface,
+                      height: 1.0,
+                    ),
                   ),
-                ),
-                const Spacer(), 
-                Text(
-                  lunarYear,
-                  style: TextStyle(
-                    fontSize: 16,
-                    color: const Color.fromARGB(255, 109, 48, 48), 
+                  const SizedBox(width: 8),
+                  Text(
+                    '年',
+                    style: theme.textTheme.titleMedium?.copyWith(
+                      color: colorScheme.onSurfaceVariant,
+                    ),
                   ),
-                ),
-              ],
+                  const Spacer(), 
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: colorScheme.primaryContainer,
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    child: Text(
+                      lunarYear,
+                      style: theme.textTheme.labelMedium?.copyWith(
+                        color: colorScheme.onPrimaryContainer,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
-            SizedBox(height: 2),
+            
             Expanded(
               child: GridView.builder(
                 shrinkWrap: true,
                 padding: EdgeInsets.zero,
-                physics: NeverScrollableScrollPhysics(),
+                physics: const NeverScrollableScrollPhysics(),
                 gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
                   crossAxisCount: 3,
-                  crossAxisSpacing: 6,
-                  mainAxisSpacing: 6,
-                  childAspectRatio: 0.85, // 恢复为更紧凑的宽高比
+                  crossAxisSpacing: 12, // 增加间距
+                  mainAxisSpacing: 12,  // 增加间距
+                  childAspectRatio: 0.8, // 调整比例适配新样式
                 ),
                 itemCount: 12,
                 itemBuilder: (context, index) {
@@ -222,86 +236,77 @@ class _MonthView extends StatelessWidget {
     }
   }
 
-  bool isSameMonth(DateTime date1, DateTime date2) {
-    return date1.year == date2.year && date1.month == date2.month;
-  }
-
-  bool isSpecialDate(DateTime date) {
-    return LunarUtils.isHoliday(date);
-  }
-  
-  
-  Color getMonthColor(int month) {
-    return Colors.white; 
-  }
-
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
     return InkWell(
       onTap: _onMonthTap,
-      borderRadius: BorderRadius.circular(8),
+      borderRadius: BorderRadius.circular(16),
       child: Container(
         decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(8),
-          color: Colors.white, 
-          border: Border.all(color: Colors.grey.shade300, width: 1), // 添加边框
-          boxShadow: [
-            BoxShadow(
-                color: Colors.grey.withValues(alpha: 0.2),
-              blurRadius: 4,
-              offset: Offset(0, 2),
+          borderRadius: BorderRadius.circular(16),
+          // [修改] 使用 Surface Container 颜色，区分层级，去除边框
+          color: colorScheme.surfaceContainerLow,
+        ),
+        padding: const EdgeInsets.all(8), 
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch, 
+          children: [
+            // 月份标题
+            Padding(
+              padding: const EdgeInsets.only(bottom: 6.0),
+              child: Text(
+                '$month月',
+                style: theme.textTheme.labelLarge?.copyWith(
+                  color: colorScheme.primary,
+                  fontWeight: FontWeight.bold,
+                ),
+                textAlign: TextAlign.center,
+              ),
+            ),
+            // 星期头
+            const _WeekDaysRow(),
+            const SizedBox(height: 4),
+            // 日期格子
+            Expanded( 
+              child: _SimpleMonthDays(year: year, month: month),
             ),
           ],
-        ),
-        padding: EdgeInsets.all(8), 
-        child: SizedBox.expand( 
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch, 
-            mainAxisAlignment: MainAxisAlignment.spaceEvenly, 
-            children: [
-              Center(
-                child: Text(
-                  '$month月',
-                  style: TextStyle(
-                    color: Colors.black, 
-                    fontWeight: FontWeight.bold,
-                    fontSize: 14, 
-                  ),
-                ),
-              ),
-              const _WeekDaysRow(),
-              Expanded( 
-                child: _SimpleMonthDays(year: year, month: month),
-              ),
-            ],
-          ),
         ),
       ),
     );
   }
 }
 
-
 class _WeekDaysRow extends StatelessWidget {
   const _WeekDaysRow();
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final textStyle = TextStyle(
+      fontSize: 9, 
+      color: colorScheme.onSurfaceVariant, 
+      fontWeight: FontWeight.w500
+    );
+    final weekendStyle = textStyle.copyWith(color: colorScheme.error);
+
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceAround,
-      children: const [
-        Text('日', style: TextStyle(fontSize: 10, color: Colors.red, fontWeight: FontWeight.bold)),
-        Text('一', style: TextStyle(fontSize: 10, color: Colors.black, fontWeight: FontWeight.bold)),
-        Text('二', style: TextStyle(fontSize: 10, color: Colors.black, fontWeight: FontWeight.bold)),
-        Text('三', style: TextStyle(fontSize: 10, color: Colors.black, fontWeight: FontWeight.bold)),
-        Text('四', style: TextStyle(fontSize: 10, color: Colors.black, fontWeight: FontWeight.bold)),
-        Text('五', style: TextStyle(fontSize: 10, color: Colors.black, fontWeight: FontWeight.bold)),
-        Text('六', style: TextStyle(fontSize: 10, color: Colors.red, fontWeight: FontWeight.bold)),
+      children: [
+        Text('日', style: weekendStyle),
+        Text('一', style: textStyle),
+        Text('二', style: textStyle),
+        Text('三', style: textStyle),
+        Text('四', style: textStyle),
+        Text('五', style: textStyle),
+        Text('六', style: weekendStyle),
       ],
     );
   }
 }
-
 
 class _SimpleMonthDays extends StatelessWidget {
   final int year;
@@ -314,6 +319,7 @@ class _SimpleMonthDays extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
     
     final daysInMonth = DateTime(year, month + 1, 0).day;
     final firstDayOfMonth = DateTime(year, month, 1);
@@ -321,7 +327,7 @@ class _SimpleMonthDays extends StatelessWidget {
     final rows = ((firstDayOffset + daysInMonth) / 7).ceil();
     
     return Column(
-      mainAxisAlignment: MainAxisAlignment.spaceEvenly, 
+      mainAxisAlignment: MainAxisAlignment.start, // 顶部对齐
       children: List.generate(rows, (rowIndex) {
         return Expanded( 
           child: Row(
@@ -330,27 +336,26 @@ class _SimpleMonthDays extends StatelessWidget {
               final dayIndex = rowIndex * 7 + colIndex;
               
               if (dayIndex < firstDayOffset || dayIndex >= firstDayOffset + daysInMonth) {
-                return Expanded( 
-                  child: Container(
-                    alignment: Alignment.center,
-                    child: const Text(''),
-                  ),
-                );
+                return const Expanded(child: SizedBox());
               }
               
               final day = dayIndex - firstDayOffset + 1;
               final date = DateTime(year, month, day);
-              final special = LunarUtils.isHoliday(date);
+              final isHoliday = LunarUtils.isHoliday(date);
               
               return Expanded( 
-                child: Container(
-                  alignment: Alignment.center,
-                  child: Text(
-                    '$day',
-                    style: TextStyle(
-                      fontSize: 10, 
-                      fontWeight: special ? FontWeight.bold : FontWeight.normal,
-                      color: special ? Colors.red : Colors.black, 
+                child: Center(
+                  child: Container(
+                    width: 14, // 固定宽度确保对齐
+                    alignment: Alignment.center,
+                    child: Text(
+                      '$day',
+                      style: TextStyle(
+                        fontSize: 9, 
+                        fontWeight: isHoliday ? FontWeight.w900 : FontWeight.normal,
+                        // 节假日用 Error 色，普通日期用 OnSurface
+                        color: isHoliday ? colorScheme.error : colorScheme.onSurface,
+                      ),
                     ),
                   ),
                 ),
