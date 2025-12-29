@@ -30,14 +30,14 @@ void main() async {
   runApp(const MyApp());
 }
 
-// 全局通知初始化
+
 Future<void> _initNotifications() async {
   final notifications = FlutterLocalNotificationsPlugin();
   
-  // 请求通知权限
+  
   await Permission.notification.request();
   
-  // 初始化通知设置
+  
   const AndroidInitializationSettings androidSettings =
       AndroidInitializationSettings('@mipmap/ic_launcher');
   const DarwinInitializationSettings iosSettings =
@@ -49,7 +49,7 @@ Future<void> _initNotifications() async {
   
   await notifications.initialize(settings);
   
-  // 创建通知渠道（仅Android）
+
   const AndroidNotificationChannel channel = AndroidNotificationChannel(
     'event_reminder_channel',
     '事件提醒',
@@ -71,7 +71,7 @@ class MyApp extends StatelessWidget {
     const seedColor = Color(0xFF6366F1); 
 
     return MaterialApp(
-      title: 'Smart Stock Calendar', // 升级应用名称
+      title: '智股历', // 升级应用名称
       debugShowCheckedModeBanner: false, // 移除 debug 标签
       
       // 1. 亮色主题配置 (Material 3)
