@@ -23,28 +23,26 @@ class CalendarScreen extends StatefulWidget {
 class _CalendarScreenState extends State<CalendarScreen> with TickerProviderStateMixin {
   DateTime _focusedDay = DateTime.now();
   DateTime? _selectedDay;
-  int _currentViewIndex = 1; // 0: 年视图, 1: 月视图 (默认打开月视图)
+  int _currentViewIndex = 1; // 0: 年视图, 1: 月视图
   
   // 动画控制器
   late final AnimationController _scaleController;
   late final AnimationController _opacityController;
   
-  // 获取Hive事件存储箱
+  // Hive Boxes
   final Box<Event> _eventsBox = Hive.box<Event>('events');
   final Box<CalendarSubscription> _subscriptionsBox = Hive.box<CalendarSubscription>('subscriptions');
   
-  // 通知服务
+  // Notification Plugin
   final FlutterLocalNotificationsPlugin _notifications = FlutterLocalNotificationsPlugin();
   
-  // 导入导出管理器
+  // Managers
   late final ImportExportManager _importExportManager;
   late final SubscriptionManager _subscriptionManager;
   
   @override
   void initState() {
     super.initState();
-    
-    // 初始化动画控制器
     _scaleController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 300),
@@ -55,13 +53,9 @@ class _CalendarScreenState extends State<CalendarScreen> with TickerProviderStat
       duration: const Duration(milliseconds: 200),
     )..value = 1.0;
     
-    // 初始化导入导出管理器
     _importExportManager = ImportExportManager(_eventsBox);
-    
-    // 初始化订阅管理器
     _subscriptionManager = SubscriptionManager(_subscriptionsBox, _eventsBox);
     
-    // 延迟初始化通知服务
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       try {
         await _initNotifications();
@@ -72,7 +66,6 @@ class _CalendarScreenState extends State<CalendarScreen> with TickerProviderStat
       }
     });
     
-    // 启动时自动同步订阅
     WidgetsBinding.instance.addPostFrameCallback((_) {
       try {
         _autoSyncSubscriptions();
@@ -92,7 +85,6 @@ class _CalendarScreenState extends State<CalendarScreen> with TickerProviderStat
         android: androidSettings,
         iOS: iosSettings,
       );
-      
       await _notifications.initialize(settings);
       
       const AndroidNotificationChannel channel = AndroidNotificationChannel(
@@ -113,9 +105,7 @@ class _CalendarScreenState extends State<CalendarScreen> with TickerProviderStat
   void _scheduleEventReminders() {
     try {
       _notifications.resolvePlatformSpecificImplementation;
-    } catch (e) {
-      return;
-    }
+    } catch (e) { return; }
     
     try {
       _notifications.cancelAll();
@@ -130,7 +120,6 @@ class _CalendarScreenState extends State<CalendarScreen> with TickerProviderStat
   Future<void> _scheduleEventReminder(Event event) async {
     final now = DateTime.now();
     final eventStart = event.startTime;
-    
     if (eventStart.isBefore(now)) return;
     
     final reminderTimes = [
@@ -176,20 +165,10 @@ class _CalendarScreenState extends State<CalendarScreen> with TickerProviderStat
     try {
       final results = await _subscriptionManager.syncAllSubscriptions();
       if (results.isNotEmpty && mounted) {
-        String message = '订阅同步完成：\n';
-        results.forEach((name, count) {
-          if (count >= 0) {
-            message += '$name: $count 个事件\n';
-          } else {
-            message += '$name: 同步失败\n';
-          }
-        });
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+        // 简化自动同步提示
       }
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('订阅同步失败: $e')));
-      }
+      // 静默失败
     }
   }
   
@@ -199,11 +178,7 @@ class _CalendarScreenState extends State<CalendarScreen> with TickerProviderStat
       if (mounted) {
         String message = '订阅同步完成：\n';
         results.forEach((name, count) {
-          if (count >= 0) {
-            message += '$name: $count 个事件\n';
-          } else {
-            message += '$name: 同步失败\n';
-          }
+          message += count >= 0 ? '$name: $count 个事件\n' : '$name: 同步失败\n';
         });
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
         setState(() {});
@@ -218,11 +193,7 @@ class _CalendarScreenState extends State<CalendarScreen> with TickerProviderStat
   void _openSubscriptionManagement() {
     Navigator.push(
       context,
-      MaterialPageRoute(
-        builder: (context) => SubscriptionManagementScreen(
-          subscriptionManager: _subscriptionManager,
-        ),
-      ),
+      MaterialPageRoute(builder: (context) => SubscriptionManagementScreen(subscriptionManager: _subscriptionManager)),
     ).then((_) => setState(() {})); 
   }
   
@@ -230,97 +201,36 @@ class _CalendarScreenState extends State<CalendarScreen> with TickerProviderStat
     try {
       final icsContent = await _importExportManager.exportEventsToICS();
       await Clipboard.setData(ClipboardData(text: icsContent));
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('事件已导出到剪贴板（ICS格式）')));
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('导出失败: $e')));
-      }
-    }
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('ICS已复制到剪贴板')));
+    } catch (e) { if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('导出失败: $e'))); }
   }
-  
   Future<void> _exportEventsToJSON() async {
     try {
       final jsonContent = await _importExportManager.exportEventsToJSON();
       await Clipboard.setData(ClipboardData(text: jsonContent));
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('事件已导出到剪贴板（JSON格式）')));
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('导出失败: $e')));
-      }
-    }
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('JSON已复制到剪贴板')));
+    } catch (e) { if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('导出失败: $e'))); }
   }
-  
   Future<void> _importEventsFromICS() async {
     try {
-      final clipboardData = await Clipboard.getData('text/plain');
-      if (clipboardData?.text == null) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('剪贴板中没有有效数据')));
-        }
-        return;
-      }
-      final importedCount = await _importExportManager.importEventsFromICS(clipboardData!.text!);
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('成功导入 $importedCount 个事件')));
-        setState(() {});
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('导入失败: $e')));
-      }
-    }
+      final data = await Clipboard.getData('text/plain');
+      if (data?.text == null) return;
+      final count = await _importExportManager.importEventsFromICS(data!.text!);
+      if (mounted) { ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('导入 $count 个事件'))); setState(() {}); }
+    } catch (e) { if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('导入失败: $e'))); }
   }
-  
   Future<void> _importEventsFromJSON() async {
     try {
-      final clipboardData = await Clipboard.getData('text/plain');
-      if (clipboardData?.text == null) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('剪贴板中没有有效数据')));
-        }
-        return;
-      }
-      final importedCount = await _importExportManager.importEventsFromJSON(clipboardData!.text!);
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('成功导入 $importedCount 个事件')));
-        setState(() {});
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('导入失败: $e')));
-      }
-    }
+      final data = await Clipboard.getData('text/plain');
+      if (data?.text == null) return;
+      final count = await _importExportManager.importEventsFromJSON(data!.text!);
+      if (mounted) { ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('导入 $count 个事件'))); setState(() {}); }
+    } catch (e) { if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('导入失败: $e'))); }
   }
-  
+
   Future<void> _testNotification() async {
-    try {
-      _notifications;
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('通知服务尚未初始化，请稍后再试')));
-      }
-      return;
-    }
-    
-    await _notifications.show(
-      9999,
-      '测试通知',
-      '日程提醒功能正常工作',
-      const NotificationDetails(
-        android: AndroidNotificationDetails(
-          'event_reminder_channel',
-          '事件提醒',
-          channelDescription: '日历事件提醒通知',
-          importance: Importance.high,
-          priority: Priority.high,
-        ),
-        iOS: DarwinNotificationDetails(),
-      ),
-    );
+    try { _notifications; } catch (e) { return; }
+    await _notifications.show(9999, '测试通知', '通知功能正常', const NotificationDetails(android: AndroidNotificationDetails('event_reminder_channel', '事件提醒', importance: Importance.high), iOS: DarwinNotificationDetails()));
   }
   
   @override
@@ -332,15 +242,11 @@ class _CalendarScreenState extends State<CalendarScreen> with TickerProviderStat
   
   void _handleViewChange(int newIndex) {
     if (newIndex == _currentViewIndex) return;
-    
     _opacityController.reverse().then((_) {
       setState(() {
         _currentViewIndex = newIndex;
-        if (newIndex == 0) {
-          _focusedDay = DateTime.now();
-        }
+        if (newIndex == 0) _focusedDay = DateTime.now();
       });
-
       _scaleController.value = 0.8;
       _scaleController.forward();
       _opacityController.forward();
@@ -349,24 +255,12 @@ class _CalendarScreenState extends State<CalendarScreen> with TickerProviderStat
   
   void _handleMonthSelected(DateTime selectedMonth) {
     final firstDay = DateTime(2000);
-    if (selectedMonth.isBefore(firstDay)) {
-      _focusedDay = firstDay;
-    } else {
-      _focusedDay = selectedMonth;
-    }
+    _focusedDay = selectedMonth.isBefore(firstDay) ? firstDay : selectedMonth;
     _handleViewChange(1);
   }
   
   void _handleDoubleTapDay(DateTime day) {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) => StockMarketDataScreen(
-          selectedDate: day,
-          eventsBox: _eventsBox,
-        ),
-      ),
-    );
+    Navigator.push(context, MaterialPageRoute(builder: (context) => StockMarketDataScreen(selectedDate: day, eventsBox: _eventsBox)));
   }
 
   List<dynamic> _getEventsForDay(DateTime day) {
@@ -380,590 +274,234 @@ class _CalendarScreenState extends State<CalendarScreen> with TickerProviderStat
   }
 
   void _editEvent(Event event) {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) => EventEditScreen(
-          event: event,
-          onEventSaved: (updatedEvent) {
-            event.title = updatedEvent.title;
-            event.startTime = updatedEvent.startTime;
-            event.endTime = updatedEvent.endTime;
-            event.location = updatedEvent.location;
-            event.description = updatedEvent.description;
-            event.isAllDay = updatedEvent.isAllDay;
-            event.save();
-            setState(() {});
+    Navigator.push(context, MaterialPageRoute(builder: (context) => EventEditScreen(event: event, onEventSaved: (updated) {
+      event.title = updated.title; event.startTime = updated.startTime; event.endTime = updated.endTime;
+      event.location = updated.location; event.description = updated.description; event.isAllDay = updated.isAllDay;
+      event.save(); setState(() {});
+    }, onEventDeleted: (deleted) { deleted.delete(); setState(() {}); })));
+  }
+
+  void _deleteEvent(Event event) {
+    showDialog(context: context, builder: (context) => AlertDialog(
+      title: const Text('删除事件'), content: Text('确定要删除事件"${event.title}"吗？'),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(context), child: const Text('取消')),
+        TextButton(onPressed: () { event.delete(); setState(() {}); Navigator.pop(context); }, child: Text('删除', style: TextStyle(color: Theme.of(context).colorScheme.error))),
+      ],
+    ));
+  }
+
+  Widget _getCurrentView() {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    
+    switch (_currentViewIndex) {
+      case 0: return YearView(focusedDay: _focusedDay, onMonthSelected: _handleMonthSelected);
+      case 1: return _buildMonthView(colorScheme, theme);
+      case 2: return _buildWeekView(colorScheme, theme);
+      default: return Container();
+    }
+  }
+
+  Widget _buildMonthView(ColorScheme colorScheme, ThemeData theme) {
+    return Container(
+      decoration: BoxDecoration(
+        color: colorScheme.surface,
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [BoxShadow(color: colorScheme.shadow.withOpacity(0.08), blurRadius: 20, offset: const Offset(0, 4))],
+      ),
+      child: TableCalendar(
+        locale: 'zh_CN', 
+        daysOfWeekHeight: 30,
+        // [关键修复] 设置为true，让日历填满父容器(Expanded)的剩余高度，避免 overflow
+        shouldFillViewport: true,
+        
+        firstDay: DateTime(2000), lastDay: DateTime(2050), focusedDay: _focusedDay,
+        selectedDayPredicate: (day) => isSameDay(_selectedDay, day),
+        calendarFormat: CalendarFormat.month, availableCalendarFormats: const {CalendarFormat.month: '月'},
+        calendarStyle: CalendarStyle(
+          todayDecoration: BoxDecoration(color: colorScheme.secondaryContainer, shape: BoxShape.circle),
+          todayTextStyle: TextStyle(color: colorScheme.onSecondaryContainer, fontWeight: FontWeight.bold, fontSize: 16),
+          selectedDecoration: BoxDecoration(color: colorScheme.primary, shape: BoxShape.circle),
+          selectedTextStyle: TextStyle(color: colorScheme.onPrimary, fontWeight: FontWeight.bold, fontSize: 16),
+          weekendTextStyle: TextStyle(color: colorScheme.error, fontWeight: FontWeight.w600),
+          defaultTextStyle: TextStyle(color: colorScheme.onSurface, fontWeight: FontWeight.w500, fontSize: 16),
+          outsideTextStyle: TextStyle(color: colorScheme.onSurfaceVariant.withOpacity(0.5), fontSize: 14),
+        ),
+        headerStyle: HeaderStyle(
+          formatButtonVisible: false, titleCentered: true,
+          titleTextStyle: theme.textTheme.titleLarge!.copyWith(fontWeight: FontWeight.bold, color: colorScheme.onSurface),
+          leftChevronIcon: Container(decoration: BoxDecoration(color: colorScheme.surfaceContainerHighest, shape: BoxShape.circle), child: Icon(Icons.chevron_left, color: colorScheme.onSurfaceVariant, size: 24)),
+          rightChevronIcon: Container(decoration: BoxDecoration(color: colorScheme.surfaceContainerHighest, shape: BoxShape.circle), child: Icon(Icons.chevron_right, color: colorScheme.onSurfaceVariant, size: 24)),
+          decoration: BoxDecoration(color: colorScheme.surface, borderRadius: const BorderRadius.vertical(top: Radius.circular(20))),
+        ),
+        daysOfWeekStyle: DaysOfWeekStyle(weekdayStyle: TextStyle(color: colorScheme.secondary, fontWeight: FontWeight.w600), weekendStyle: TextStyle(color: colorScheme.error, fontWeight: FontWeight.w600)),
+        onDaySelected: (selectedDay, focusedDay) { if (!isSameDay(_selectedDay, selectedDay)) setState(() { _selectedDay = selectedDay; _focusedDay = focusedDay; }); },
+        onPageChanged: (focusedDay) => _focusedDay = focusedDay, eventLoader: _getEventsForDay,
+        calendarBuilders: CalendarBuilders(
+          dowBuilder: (context, date) {
+            final weekday = date.weekday % 7; final weekdays = ['日', '一', '二', '三', '四', '五', '六'];
+            return Center(child: Text(weekdays[weekday], style: TextStyle(color: weekday == 0 || weekday == 6 ? colorScheme.error : colorScheme.onSurface.withOpacity(0.8), fontWeight: FontWeight.bold)));
           },
-          onEventDeleted: (deletedEvent) {
-            deletedEvent.delete();
-            setState(() {});
-          },
+          defaultBuilder: (context, day, focusedDay) => _buildDayCell(day, colorScheme, false),
+          todayBuilder: (context, day, focusedDay) => _buildDayCell(day, colorScheme, false, isToday: true),
         ),
       ),
     );
   }
 
-  void _deleteEvent(Event event) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('删除事件'),
-        content: Text('确定要删除事件"${event.title}"吗？'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('取消'),
-          ),
-          TextButton(
-            onPressed: () {
-              event.delete();
-              setState(() {});
-              Navigator.pop(context);
-            },
-            child: Text('删除', style: TextStyle(color: Theme.of(context).colorScheme.error)),
-          ),
-        ],
+  Widget _buildWeekView(ColorScheme colorScheme, ThemeData theme) {
+    return TableCalendar(
+      locale: 'zh_CN', daysOfWeekHeight: 30,
+      firstDay: DateTime(2000), lastDay: DateTime(2050), focusedDay: _focusedDay,
+      selectedDayPredicate: (day) => isSameDay(_selectedDay, day),
+      calendarFormat: CalendarFormat.week, availableCalendarFormats: const {CalendarFormat.month: '月', CalendarFormat.week: '周'},
+      calendarStyle: CalendarStyle(
+        todayDecoration: BoxDecoration(color: colorScheme.secondaryContainer, shape: BoxShape.circle),
+        selectedDecoration: BoxDecoration(color: colorScheme.primary, shape: BoxShape.circle),
+        weekendTextStyle: TextStyle(color: colorScheme.error),
+        defaultTextStyle: TextStyle(color: colorScheme.onSurface),
+        todayTextStyle: TextStyle(color: colorScheme.onSecondaryContainer, fontWeight: FontWeight.bold),
+        selectedTextStyle: TextStyle(color: colorScheme.onPrimary, fontWeight: FontWeight.bold),
+      ),
+      headerStyle: HeaderStyle(formatButtonVisible: false, titleCentered: true, titleTextStyle: TextStyle(color: colorScheme.onSurface, fontSize: 16, fontWeight: FontWeight.bold), leftChevronIcon: Icon(Icons.chevron_left, color: colorScheme.onSurface), rightChevronIcon: Icon(Icons.chevron_right, color: colorScheme.onSurface)),
+      calendarBuilders: CalendarBuilders(
+          dowBuilder: (context, date) {
+            final weekday = date.weekday % 7; final weekdays = ['日', '一', '二', '三', '四', '五', '六'];
+            return Center(child: Text(weekdays[weekday], style: TextStyle(color: weekday == 0 || weekday == 6 ? colorScheme.error : colorScheme.onSurface.withOpacity(0.8), fontWeight: FontWeight.bold, fontSize: 12)));
+          },
+        defaultBuilder: (context, day, focusedDay) => _buildDayCell(day, colorScheme, true),
+        todayBuilder: (context, day, focusedDay) => _buildDayCell(day, colorScheme, true, isToday: true),
+        selectedBuilder: (context, day, focusedDay) => _buildDayCell(day, colorScheme, true, isSelected: true),
       ),
     );
   }
 
-  // 获取当前视图
-  Widget _getCurrentView() {
-    final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
-    final isDark = theme.brightness == Brightness.dark;
+  Widget _buildDayCell(DateTime day, ColorScheme colorScheme, bool isWeekView, {bool isToday = false, bool isSelected = false}) {
+    bool isHoliday = LunarUtils.isHoliday(day);
+    final lunarDate = LunarUtils.solarToLunar(day);
+    Color textColor;
+    if (isSelected) textColor = colorScheme.onPrimary;
+    else if (isToday) textColor = isHoliday ? colorScheme.error : colorScheme.primary;
+    else textColor = isHoliday ? colorScheme.error : colorScheme.onSurface;
 
-    switch (_currentViewIndex) {
-      case 0: // 年视图
-        return YearView(
-          focusedDay: _focusedDay,
-          onMonthSelected: _handleMonthSelected,
-        );
-      case 1: // 月视图
-        return Container(
-          decoration: BoxDecoration(
-            color: colorScheme.surface,
-            borderRadius: BorderRadius.circular(20),
-            boxShadow: [
-              BoxShadow(
-                color: colorScheme.shadow.withOpacity(0.08),
-                spreadRadius: 0,
-                blurRadius: 20,
-                offset: const Offset(0, 4),
-              ),
-            ],
-          ),
-          child: TableCalendar(
-            locale: 'zh_CN', // 1. 确保设置语言
-            daysOfWeekHeight: 30, // 2. 确保显式设置高度
-            
-            firstDay: DateTime(2000),
-            lastDay: DateTime(2050),
-            focusedDay: _focusedDay,
-            selectedDayPredicate: (day) => isSameDay(_selectedDay, day),
-            calendarFormat: CalendarFormat.month,
-            availableCalendarFormats: const {CalendarFormat.month: '月'},
-            
-            calendarStyle: CalendarStyle(
-              cellPadding: const EdgeInsets.all(4),
-              todayDecoration: BoxDecoration(
-                color: colorScheme.secondaryContainer,
-                shape: BoxShape.circle,
-              ),
-              todayTextStyle: TextStyle(
-                color: colorScheme.onSecondaryContainer,
-                fontWeight: FontWeight.bold,
-                fontSize: 16,
-              ),
-              selectedDecoration: BoxDecoration(
-                color: colorScheme.primary,
-                shape: BoxShape.circle,
-                boxShadow: [
-                  BoxShadow(
-                    color: colorScheme.primary.withOpacity(0.3),
-                    blurRadius: 8,
-                    offset: const Offset(0, 3),
-                  ),
-                ],
-              ),
-              selectedTextStyle: TextStyle(
-                color: colorScheme.onPrimary,
-                fontWeight: FontWeight.w600,
-                fontSize: 16,
-              ),
-              weekendTextStyle: TextStyle(
-                color: colorScheme.error, 
-                fontWeight: FontWeight.w600
-              ),
-              defaultTextStyle: TextStyle(
-                color: colorScheme.onSurface,
-                fontWeight: FontWeight.w500,
-                fontSize: 16,
-              ),
-              outsideTextStyle: TextStyle(
-                color: colorScheme.onSurfaceVariant.withOpacity(0.5),
-                fontSize: 14,
-              ),
-            ),
-            
-            headerStyle: HeaderStyle(
-              formatButtonVisible: false,
-              titleCentered: true,
-              titleTextStyle: theme.textTheme.titleLarge!.copyWith(
-                fontWeight: FontWeight.bold,
-                color: colorScheme.onSurface,
-              ),
-              leftChevronIcon: Container(
-                decoration: BoxDecoration(
-                  color: colorScheme.surfaceContainerHighest,
-                  shape: BoxShape.circle,
-                ),
-                child: Icon(Icons.chevron_left, color: colorScheme.onSurfaceVariant, size: 24),
-              ),
-              rightChevronIcon: Container(
-                decoration: BoxDecoration(
-                  color: colorScheme.surfaceContainerHighest,
-                  shape: BoxShape.circle,
-                ),
-                child: Icon(Icons.chevron_right, color: colorScheme.onSurfaceVariant, size: 24),
-              ),
-              decoration: BoxDecoration(
-                color: colorScheme.surface,
-                borderRadius: const BorderRadius.only(
-                  topLeft: Radius.circular(20),
-                  topRight: Radius.circular(20),
-                ),
-              ),
-              headerMargin: const EdgeInsets.symmetric(vertical: 16),
-            ),
-            
-            daysOfWeekStyle: DaysOfWeekStyle(
-              weekdayStyle: TextStyle(
-                color: colorScheme.secondary,
-                fontWeight: FontWeight.w600,
-                fontSize: 14,
-              ),
-              weekendStyle: TextStyle(
-                color: colorScheme.error,
-                fontWeight: FontWeight.w600,
-                fontSize: 14,
-              ),
-            ),
-            
-            onDaySelected: (selectedDay, focusedDay) {
-              if (!isSameDay(_selectedDay, selectedDay)) {
-                setState(() {
-                  _selectedDay = selectedDay;
-                  _focusedDay = focusedDay;
-                });
-              }
-            },
-            onPageChanged: (focusedDay) => _focusedDay = focusedDay,
-            eventLoader: _getEventsForDay,
-            
-            calendarBuilders: CalendarBuilders(
-              dowBuilder: (context, date) {
-                final int weekday = date.weekday % 7;
-                final List<String> weekdays = ['日', '一', '二', '三', '四', '五', '六'];
-                return Center(
-                  child: Text(
-                    weekdays[weekday],
-                    style: TextStyle(
-                      color: weekday == 0 || weekday == 6 
-                        ? colorScheme.error 
-                        : colorScheme.onSurface.withOpacity(0.8),
-                      fontWeight: FontWeight.bold,
-                      fontSize: 14,
-                    ),
-                  ),
-                );
-              },
-              defaultBuilder: (context, day, focusedDay) {
-                bool isHoliday = LunarUtils.isHoliday(day);
-                return GestureDetector(
-                  onDoubleTap: () => _handleDoubleTapDay(day),
-                  child: Container(
-                    margin: const EdgeInsets.all(2),
-                    alignment: Alignment.center,
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Text(
-                          day.day.toString(),
-                          style: TextStyle(
-                            color: isHoliday ? colorScheme.error : colorScheme.onSurface,
-                            fontWeight: FontWeight.w600,
-                            fontSize: 16,
-                          ),
-                        ),
-                        if (isHoliday)
-                          Container(
-                            margin: const EdgeInsets.only(top: 2),
-                            width: 4,
-                            height: 4,
-                            decoration: BoxDecoration(
-                              color: colorScheme.error,
-                              shape: BoxShape.circle,
-                            ),
-                          ),
-                      ],
-                    ),
-                  ),
-                );
-              },
-              todayBuilder: (context, day, focusedDay) {
-                bool isHoliday = LunarUtils.isHoliday(day);
-                return GestureDetector(
-                  onDoubleTap: () => _handleDoubleTapDay(day),
-                  child: Container(
-                    margin: const EdgeInsets.all(2),
-                    alignment: Alignment.center,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      border: Border.all(color: colorScheme.primary, width: 2),
-                    ),
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Text(
-                          day.day.toString(),
-                          style: TextStyle(
-                            color: isHoliday ? colorScheme.error : colorScheme.primary,
-                            fontWeight: FontWeight.w700,
-                            fontSize: 16,
-                          ),
-                        ),
-                        if (isHoliday)
-                          Container(
-                            margin: const EdgeInsets.only(top: 2),
-                            width: 4,
-                            height: 4,
-                            decoration: BoxDecoration(
-                              color: colorScheme.error,
-                              shape: BoxShape.circle,
-                            ),
-                          ),
-                      ],
-                    ),
-                  ),
-                );
-              },
-            ),
-          ),
-        );
-      case 2: // 周视图
-        return TableCalendar(
-          locale: 'zh_CN',
-          daysOfWeekHeight: 30, // 显式高度
-          
-          firstDay: DateTime(2000),
-          lastDay: DateTime(2050),
-          focusedDay: _focusedDay,
-          selectedDayPredicate: (day) => isSameDay(_selectedDay, day),
-          calendarFormat: CalendarFormat.week,
-          availableCalendarFormats: const {
-            CalendarFormat.month: '月',
-            CalendarFormat.week: '周',
-          },
-          
-          calendarStyle: CalendarStyle(
-            cellPadding: EdgeInsets.zero,
-            todayDecoration: BoxDecoration(
-              color: colorScheme.secondaryContainer,
-              shape: BoxShape.circle,
-            ),
-            selectedDecoration: BoxDecoration(
-              color: colorScheme.primary,
-              shape: BoxShape.circle,
-            ),
-            weekendTextStyle: TextStyle(color: colorScheme.error),
-            defaultTextStyle: TextStyle(fontSize: 14, color: colorScheme.onSurface),
-            todayTextStyle: TextStyle(
-              color: colorScheme.onSecondaryContainer,
-              fontWeight: FontWeight.bold,
-              fontSize: 14,
-            ),
-            selectedTextStyle: TextStyle(
-              color: colorScheme.onPrimary,
-              fontWeight: FontWeight.bold,
-              fontSize: 14,
-            ),
-            outsideTextStyle: TextStyle(
-              color: colorScheme.onSurfaceVariant.withOpacity(0.5),
-              fontSize: 12,
-            ),
-          ),
-          
-          headerStyle: HeaderStyle(
-            formatButtonVisible: false,
-            titleCentered: true,
-            titleTextStyle: TextStyle(
-              color: colorScheme.onSurface, 
-              fontSize: 16, 
-              fontWeight: FontWeight.bold
-            ),
-            leftChevronIcon: Icon(Icons.chevron_left, size: 20, color: colorScheme.onSurface),
-            rightChevronIcon: Icon(Icons.chevron_right, size: 20, color: colorScheme.onSurface),
-          ),
-          
-          calendarBuilders: CalendarBuilders(
-            dowBuilder: (context, date) {
-              final int weekday = date.weekday % 7;
-              final List<String> weekdays = ['日', '一', '二', '三', '四', '五', '六'];
-              return Center(
-                child: Text(
-                  weekdays[weekday],
-                  style: TextStyle(
-                    color: weekday == 0 || weekday == 6 
-                      ? colorScheme.error 
-                      : colorScheme.onSurface.withOpacity(0.8),
-                    fontWeight: FontWeight.bold,
-                    fontSize: 12,
-                  ),
-                ),
-              );
-            },
-            defaultBuilder: (context, day, focusedDay) {
-              final lunarDate = LunarUtils.solarToLunar(day);
-              bool isHoliday = LunarUtils.isHoliday(day);
-              return GestureDetector(
-                onDoubleTap: () => _handleDoubleTapDay(day),
-                child: Container(
-                  alignment: Alignment.center,
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Text(
-                        day.day.toString(),
-                        style: TextStyle(
-                          color: isSameDay(_selectedDay, day) 
-                              ? colorScheme.onPrimary 
-                              : (isHoliday ? colorScheme.error : colorScheme.onSurface),
-                          fontSize: 14,
-                        ),
-                      ),
-                      Text(
-                        lunarDate.getShortDescription().split('月')[1],
-                        style: TextStyle(
-                          fontSize: 10,
-                          color: isSameDay(_selectedDay, day) 
-                              ? colorScheme.onPrimary.withOpacity(0.8) 
-                              : (isHoliday ? colorScheme.error.withOpacity(0.8) : colorScheme.outline),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              );
-            },
-            todayBuilder: (context, day, focusedDay) {
-              final lunarDate = LunarUtils.solarToLunar(day);
-              bool isHoliday = LunarUtils.isHoliday(day);
-              return GestureDetector(
-                onDoubleTap: () => _handleDoubleTapDay(day),
-                child: Container(
-                  alignment: Alignment.center,
-                  decoration: BoxDecoration(
-                    color: colorScheme.secondaryContainer,
-                    shape: BoxShape.circle,
-                  ),
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Text(
-                        day.day.toString(),
-                        style: TextStyle(
-                          color: isHoliday ? colorScheme.error : colorScheme.onSecondaryContainer,
-                          fontWeight: FontWeight.bold,
-                          fontSize: 14,
-                        ),
-                      ),
-                      Text(
-                        lunarDate.getShortDescription().split('月')[1],
-                        style: TextStyle(
-                          fontSize: 10,
-                          color: isHoliday ? colorScheme.error.withOpacity(0.8) : colorScheme.onSecondaryContainer.withOpacity(0.7),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              );
-            },
-            selectedBuilder: (context, day, focusedDay) {
-              final lunarDate = LunarUtils.solarToLunar(day);
-              return GestureDetector(
-                onDoubleTap: () => _handleDoubleTapDay(day),
-                child: Container(
-                  alignment: Alignment.center,
-                  decoration: BoxDecoration(
-                    color: colorScheme.primary,
-                    shape: BoxShape.circle,
-                  ),
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Text(
-                        day.day.toString(),
-                        style: TextStyle(
-                          color: colorScheme.onPrimary,
-                          fontWeight: FontWeight.bold,
-                          fontSize: 14,
-                        ),
-                      ),
-                      Text(
-                        lunarDate.getShortDescription().split('月')[1],
-                        style: TextStyle(
-                          fontSize: 10,
-                          color: colorScheme.onPrimary.withOpacity(0.8),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              );
-            },
-          ),
-        );
-      default:
-        return Container();
-    }
+    return GestureDetector(
+      onDoubleTap: () => _handleDoubleTapDay(day),
+      child: Container(
+        margin: const EdgeInsets.all(2), alignment: Alignment.center,
+        decoration: isSelected 
+          ? BoxDecoration(color: colorScheme.primary, shape: BoxShape.circle) 
+          : (isToday ? BoxDecoration(shape: BoxShape.circle, border: Border.all(color: colorScheme.primary, width: 2), color: colorScheme.secondaryContainer) : null),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Text(day.day.toString(), style: TextStyle(color: textColor, fontWeight: FontWeight.bold, fontSize: 14)),
+            Text(lunarDate.getShortDescription().split('月')[1], style: TextStyle(fontSize: 10, color: textColor.withOpacity(0.7))),
+            if (isHoliday && !isSelected && !isToday) Container(margin: const EdgeInsets.only(top: 2), width: 4, height: 4, decoration: BoxDecoration(color: colorScheme.error, shape: BoxShape.circle)),
+          ],
+        ),
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
+    // 获取屏幕高度，用于计算底部列表的动态高度
+    final screenHeight = MediaQuery.of(context).size.height;
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('日程'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.rss_feed),
-            onPressed: _openSubscriptionManagement,
-            tooltip: '订阅管理',
+        title: const Text('日程'), 
+        centerTitle: true,
+        
+        // [修复点1] 增加 PreferredSize 高度 (60 -> 70)，给分段控制器更多空间
+        bottom: PreferredSize(
+          preferredSize: const Size.fromHeight(70), 
+          child: Padding(
+            padding: const EdgeInsets.only(bottom: 12.0),
+            child: SizedBox(
+              width: 300, 
+              child: SegmentedButton<int>(
+                segments: const [
+                  ButtonSegment<int>(value: 0, label: Text('年')),
+                  ButtonSegment<int>(value: 1, label: Text('月')),
+                  ButtonSegment<int>(value: 2, label: Text('周')),
+                ],
+                selected: {_currentViewIndex},
+                onSelectionChanged: (Set<int> newSelection) {
+                  _handleViewChange(newSelection.first);
+                },
+                style: ButtonStyle(
+                  visualDensity: VisualDensity.standard,
+                  shape: MaterialStateProperty.all(RoundedRectangleBorder(borderRadius: BorderRadius.circular(20))),
+                ),
+              ),
+            ),
           ),
+        ),
+        
+        actions: [
+          IconButton(icon: const Icon(Icons.rss_feed), onPressed: _openSubscriptionManagement, tooltip: '订阅管理'),
           PopupMenuButton<String>(
             icon: const Icon(Icons.import_export),
             onSelected: (value) {
-              if (value == 'export_ics') {
-                _exportEventsToICS();
-              } else if (value == 'export_json') {
-                _exportEventsToJSON();
-              } else if (value == 'import_ics') {
-                _importEventsFromICS();
-              } else if (value == 'import_json') {
-                _importEventsFromJSON();
-              } else if (value == 'sync_subscriptions') {
-                _syncSubscriptions();
-              }
+              if (value == 'export_ics') _exportEventsToICS();
+              else if (value == 'export_json') _exportEventsToJSON();
+              else if (value == 'import_ics') _importEventsFromICS();
+              else if (value == 'import_json') _importEventsFromJSON();
+              else if (value == 'sync_subscriptions') _syncSubscriptions();
             },
             itemBuilder: (context) => [
-              const PopupMenuItem(
-                value: 'export_ics',
-                child: Text('导出为ICS格式'),
-              ),
-              const PopupMenuItem(
-                value: 'export_json',
-                child: Text('导出为JSON格式'),
-              ),
-              const PopupMenuItem(
-                value: 'import_ics',
-                child: Text('从ICS文件导入'),
-              ),
-              const PopupMenuItem(
-                value: 'import_json',
-                child: Text('从JSON文件导入'),
-              ),
-              const PopupMenuItem(
-                value: 'sync_subscriptions',
-                child: Text('同步所有订阅'),
-              ),
+              const PopupMenuItem(value: 'export_ics', child: Text('导出为ICS格式')),
+              const PopupMenuItem(value: 'export_json', child: Text('导出为JSON格式')),
+              const PopupMenuItem(value: 'import_ics', child: Text('从ICS文件导入')),
+              const PopupMenuItem(value: 'import_json', child: Text('从JSON文件导入')),
+              const PopupMenuItem(value: 'sync_subscriptions', child: Text('同步所有订阅')),
             ],
           ),
-          IconButton(
-            icon: const Icon(Icons.notifications_outlined),
-            onPressed: _testNotification,
-            tooltip: '测试通知',
-          ),
-          PopupMenuButton<int>(
-            icon: const Icon(Icons.view_agenda_outlined),
-            onSelected: _handleViewChange,
-            itemBuilder: (context) => [
-              const PopupMenuItem(
-                value: 0,
-                child: Text('年视图'),
-              ),
-              const PopupMenuItem(
-                value: 1,
-                child: Text('月视图'),
-              ),
-              const PopupMenuItem(
-                value: 2,
-                child: Text('周视图'),
-              ),
-            ],
-          ),
+          IconButton(icon: const Icon(Icons.notifications_outlined), onPressed: _testNotification, tooltip: '测试通知'),
         ],
       ),
       body: Column(
-          children: [
-            Expanded(
-              child: _getCurrentView(),
-            ),
-            if (_currentViewIndex == 1 || _currentViewIndex == 2)
-              SizedBox(
-                height: 200, 
-                child: _selectedDay == null
-                    ? Center(child: Text('请选择日期', style: TextStyle(color: colorScheme.onSurfaceVariant)))
-                    : ValueListenableBuilder(
-                        valueListenable: _eventsBox.listenable(),
-                        builder: (context, box, _) {
-                          final events = _eventsBox.values.where((event) {
-                            final start = event.startTime;
-                            return start.year == _selectedDay!.year &&
-                                start.month == _selectedDay!.month &&
-                                start.day == _selectedDay!.day;
-                          }).toList();
-                          
-                          if (events.isEmpty) {
-                            return Center(
-                              child: Column(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  Icon(Icons.event_busy, size: 48, color: colorScheme.outline.withOpacity(0.5)),
-                                  const SizedBox(height: 8),
-                                  Text('当天无事件', style: TextStyle(color: colorScheme.onSurfaceVariant)),
-                                ],
-                              ),
-                            );
-                          }
-                          return ListView.builder(
-                            itemCount: events.length,
-                            itemBuilder: (context, index) => GestureDetector(
-                              onTap: () => _editEvent(events[index]),
-                              child: Dismissible(
-                                key: Key(events[index].id),
-                                direction: DismissDirection.endToStart,
-                                background: Container(
-                                  color: colorScheme.errorContainer,
-                                  alignment: Alignment.centerRight,
-                                  padding: const EdgeInsets.only(right: 20),
-                                  child: Icon(Icons.delete, color: colorScheme.onErrorContainer),
-                                ),
-                                onDismissed: (direction) => _deleteEvent(events[index]),
-                                child: EventCard(event: events[index]),
-                              ),
+        children: [
+          Expanded(child: _getCurrentView()),
+          if (_currentViewIndex == 1 || _currentViewIndex == 2)
+            // [修复点2] 使用动态高度 (屏幕的25%) 代替固定 200 高度
+            // 这样在小屏手机上列表会自动变矮，给日历留出空间，避免溢出
+            SizedBox(
+              height: screenHeight * 0.25,
+              child: _selectedDay == null
+                  ? Center(child: Text('请选择日期', style: TextStyle(color: colorScheme.onSurfaceVariant)))
+                  : ValueListenableBuilder(
+                      valueListenable: _eventsBox.listenable(),
+                      builder: (context, box, _) {
+                        final events = _getEventsForDay(_selectedDay!).cast<Event>();
+                        if (events.isEmpty) {
+                          return Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+                            Icon(Icons.event_busy, size: 48, color: colorScheme.outline.withOpacity(0.5)),
+                            const SizedBox(height: 8), Text('当天无事件', style: TextStyle(color: colorScheme.onSurfaceVariant)),
+                          ]));
+                        }
+                        return ListView.builder(
+                          itemCount: events.length,
+                          itemBuilder: (context, index) => GestureDetector(
+                            onTap: () => _editEvent(events[index]),
+                            child: Dismissible(
+                              key: Key(events[index].id),
+                              direction: DismissDirection.endToStart,
+                              background: Container(color: colorScheme.errorContainer, alignment: Alignment.centerRight, padding: const EdgeInsets.only(right: 20), child: Icon(Icons.delete, color: colorScheme.onErrorContainer)),
+                              onDismissed: (direction) => _deleteEvent(events[index]),
+                              child: EventCard(event: events[index]),
                             ),
-                          );
-                        },
-                      ),
+                          ),
+                        );
+                      },
+                    ),
             ),
-          ],
-        ),
-      floatingActionButton: null,
+        ],
+      ),
     );
   }
 }
