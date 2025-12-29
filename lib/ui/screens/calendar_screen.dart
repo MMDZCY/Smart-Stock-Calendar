@@ -9,6 +9,7 @@ import '../../utils/import_export.dart';
 import '../../utils/lunar_utils.dart';
 import 'widgets/event_card.dart';
 import 'widgets/year_view.dart';
+import 'widgets/app_drawer.dart'; // [引入侧边栏]
 import 'event_edit_screen.dart';
 import 'subscription_management_screen.dart';
 import 'stock_market_data_screen.dart';
@@ -25,18 +26,13 @@ class _CalendarScreenState extends State<CalendarScreen> with TickerProviderStat
   DateTime? _selectedDay;
   int _currentViewIndex = 1; // 0: 年视图, 1: 月视图
   
-  // 动画控制器
   late final AnimationController _scaleController;
   late final AnimationController _opacityController;
   
-  // Hive Boxes
   final Box<Event> _eventsBox = Hive.box<Event>('events');
   final Box<CalendarSubscription> _subscriptionsBox = Hive.box<CalendarSubscription>('subscriptions');
-  
-  // Notification Plugin
   final FlutterLocalNotificationsPlugin _notifications = FlutterLocalNotificationsPlugin();
   
-  // Managers
   late final ImportExportManager _importExportManager;
   late final SubscriptionManager _subscriptionManager;
   
@@ -165,7 +161,7 @@ class _CalendarScreenState extends State<CalendarScreen> with TickerProviderStat
     try {
       final results = await _subscriptionManager.syncAllSubscriptions();
       if (results.isNotEmpty && mounted) {
-        // 简化自动同步提示
+        // debugPrint('订阅同步完成: $results');
       }
     } catch (e) {
       // 静默失败
@@ -313,7 +309,6 @@ class _CalendarScreenState extends State<CalendarScreen> with TickerProviderStat
       child: TableCalendar(
         locale: 'zh_CN', 
         daysOfWeekHeight: 30,
-        // [关键修复] 设置为true，让日历填满父容器(Expanded)的剩余高度，避免 overflow
         shouldFillViewport: true,
         
         firstDay: DateTime(2000), lastDay: DateTime(2050), focusedDay: _focusedDay,
@@ -327,6 +322,9 @@ class _CalendarScreenState extends State<CalendarScreen> with TickerProviderStat
           weekendTextStyle: TextStyle(color: colorScheme.error, fontWeight: FontWeight.w600),
           defaultTextStyle: TextStyle(color: colorScheme.onSurface, fontWeight: FontWeight.w500, fontSize: 16),
           outsideTextStyle: TextStyle(color: colorScheme.onSurfaceVariant.withOpacity(0.5), fontSize: 14),
+          // [新增] 标记配置
+          markersMaxCount: 3,
+          markersAnchor: 0.8,
         ),
         headerStyle: HeaderStyle(
           formatButtonVisible: false, titleCentered: true,
@@ -337,7 +335,9 @@ class _CalendarScreenState extends State<CalendarScreen> with TickerProviderStat
         ),
         daysOfWeekStyle: DaysOfWeekStyle(weekdayStyle: TextStyle(color: colorScheme.secondary, fontWeight: FontWeight.w600), weekendStyle: TextStyle(color: colorScheme.error, fontWeight: FontWeight.w600)),
         onDaySelected: (selectedDay, focusedDay) { if (!isSameDay(_selectedDay, selectedDay)) setState(() { _selectedDay = selectedDay; _focusedDay = focusedDay; }); },
-        onPageChanged: (focusedDay) => _focusedDay = focusedDay, eventLoader: _getEventsForDay,
+        onPageChanged: (focusedDay) => _focusedDay = focusedDay, 
+        eventLoader: _getEventsForDay, // [关键] 必须连接数据源
+        
         calendarBuilders: CalendarBuilders(
           dowBuilder: (context, date) {
             final weekday = date.weekday % 7; final weekdays = ['日', '一', '二', '三', '四', '五', '六'];
@@ -345,6 +345,30 @@ class _CalendarScreenState extends State<CalendarScreen> with TickerProviderStat
           },
           defaultBuilder: (context, day, focusedDay) => _buildDayCell(day, colorScheme, false),
           todayBuilder: (context, day, focusedDay) => _buildDayCell(day, colorScheme, false, isToday: true),
+          
+          // [新增] 绘制圆点标记
+          markerBuilder: (context, day, events) {
+            if (events.isEmpty) return null;
+            return Positioned(
+              bottom: 6,
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: events.take(3).map((event) {
+                  return Container(
+                    margin: const EdgeInsets.symmetric(horizontal: 1),
+                    width: 5,
+                    height: 5,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: isSameDay(_selectedDay, day) 
+                          ? colorScheme.onPrimary.withOpacity(0.8) // 选中时为浅色
+                          : colorScheme.secondary, // 未选中时为主题色
+                    ),
+                  );
+                }).toList(),
+              ),
+            );
+          },
         ),
       ),
     );
@@ -352,7 +376,7 @@ class _CalendarScreenState extends State<CalendarScreen> with TickerProviderStat
 
   Widget _buildWeekView(ColorScheme colorScheme, ThemeData theme) {
     return TableCalendar(
-      locale: 'zh_CN', daysOfWeekHeight: 30,
+      locale: 'zh_CN', daysOfWeekHeight: 30, shouldFillViewport: true,
       firstDay: DateTime(2000), lastDay: DateTime(2050), focusedDay: _focusedDay,
       selectedDayPredicate: (day) => isSameDay(_selectedDay, day),
       calendarFormat: CalendarFormat.week, availableCalendarFormats: const {CalendarFormat.month: '月', CalendarFormat.week: '周'},
@@ -365,6 +389,9 @@ class _CalendarScreenState extends State<CalendarScreen> with TickerProviderStat
         selectedTextStyle: TextStyle(color: colorScheme.onPrimary, fontWeight: FontWeight.bold),
       ),
       headerStyle: HeaderStyle(formatButtonVisible: false, titleCentered: true, titleTextStyle: TextStyle(color: colorScheme.onSurface, fontSize: 16, fontWeight: FontWeight.bold), leftChevronIcon: Icon(Icons.chevron_left, color: colorScheme.onSurface), rightChevronIcon: Icon(Icons.chevron_right, color: colorScheme.onSurface)),
+      
+      eventLoader: _getEventsForDay, // [关键]
+      
       calendarBuilders: CalendarBuilders(
           dowBuilder: (context, date) {
             final weekday = date.weekday % 7; final weekdays = ['日', '一', '二', '三', '四', '五', '六'];
@@ -373,6 +400,24 @@ class _CalendarScreenState extends State<CalendarScreen> with TickerProviderStat
         defaultBuilder: (context, day, focusedDay) => _buildDayCell(day, colorScheme, true),
         todayBuilder: (context, day, focusedDay) => _buildDayCell(day, colorScheme, true, isToday: true),
         selectedBuilder: (context, day, focusedDay) => _buildDayCell(day, colorScheme, true, isSelected: true),
+        
+        // [新增] 周视图标记
+        markerBuilder: (context, day, events) {
+          if (events.isEmpty) return null;
+          return Positioned(
+            bottom: 4,
+            child: Container(
+              width: 5,
+              height: 5,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: isSameDay(_selectedDay, day) 
+                    ? colorScheme.onPrimary.withOpacity(0.8) 
+                    : colorScheme.secondary,
+              ),
+            ),
+          );
+        },
       ),
     );
   }
@@ -408,21 +453,30 @@ class _CalendarScreenState extends State<CalendarScreen> with TickerProviderStat
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
-    // 获取屏幕高度，用于计算底部列表的动态高度
     final screenHeight = MediaQuery.of(context).size.height;
 
     return Scaffold(
+      drawer: AppDrawer(
+        onSubscriptionTap: _openSubscriptionManagement,
+        onTestNotificationTap: _testNotification,
+        onImportExportTap: (value) {
+          if (value == 'export_ics') _exportEventsToICS();
+          else if (value == 'export_json') _exportEventsToJSON();
+          else if (value == 'import_ics') _importEventsFromICS();
+          else if (value == 'import_json') _importEventsFromJSON();
+        },
+      ),
+      
       appBar: AppBar(
-        title: const Text('日程'), 
+        title: const Text('日程'),
         centerTitle: true,
         
-        // [修复点1] 增加 PreferredSize 高度 (60 -> 70)，给分段控制器更多空间
         bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(70), 
+          preferredSize: const Size.fromHeight(70),
           child: Padding(
             padding: const EdgeInsets.only(bottom: 12.0),
             child: SizedBox(
-              width: 300, 
+              width: 300,
               child: SegmentedButton<int>(
                 segments: const [
                   ButtonSegment<int>(value: 0, label: Text('年')),
@@ -443,33 +497,18 @@ class _CalendarScreenState extends State<CalendarScreen> with TickerProviderStat
         ),
         
         actions: [
-          IconButton(icon: const Icon(Icons.rss_feed), onPressed: _openSubscriptionManagement, tooltip: '订阅管理'),
-          PopupMenuButton<String>(
-            icon: const Icon(Icons.import_export),
-            onSelected: (value) {
-              if (value == 'export_ics') _exportEventsToICS();
-              else if (value == 'export_json') _exportEventsToJSON();
-              else if (value == 'import_ics') _importEventsFromICS();
-              else if (value == 'import_json') _importEventsFromJSON();
-              else if (value == 'sync_subscriptions') _syncSubscriptions();
-            },
-            itemBuilder: (context) => [
-              const PopupMenuItem(value: 'export_ics', child: Text('导出为ICS格式')),
-              const PopupMenuItem(value: 'export_json', child: Text('导出为JSON格式')),
-              const PopupMenuItem(value: 'import_ics', child: Text('从ICS文件导入')),
-              const PopupMenuItem(value: 'import_json', child: Text('从JSON文件导入')),
-              const PopupMenuItem(value: 'sync_subscriptions', child: Text('同步所有订阅')),
-            ],
+          IconButton(
+            icon: const Icon(Icons.sync),
+            tooltip: '同步所有订阅',
+            onPressed: _syncSubscriptions,
           ),
-          IconButton(icon: const Icon(Icons.notifications_outlined), onPressed: _testNotification, tooltip: '测试通知'),
+          const SizedBox(width: 8),
         ],
       ),
       body: Column(
         children: [
           Expanded(child: _getCurrentView()),
           if (_currentViewIndex == 1 || _currentViewIndex == 2)
-            // [修复点2] 使用动态高度 (屏幕的25%) 代替固定 200 高度
-            // 这样在小屏手机上列表会自动变矮，给日历留出空间，避免溢出
             SizedBox(
               height: screenHeight * 0.25,
               child: _selectedDay == null
