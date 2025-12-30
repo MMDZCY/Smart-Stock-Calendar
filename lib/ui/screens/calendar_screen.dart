@@ -24,7 +24,7 @@ class CalendarScreen extends StatefulWidget {
 class _CalendarScreenState extends State<CalendarScreen> with TickerProviderStateMixin {
   DateTime _focusedDay = DateTime.now();
   DateTime? _selectedDay;
-  int _currentViewIndex = 1; // 0: 年视图, 1: 月视图
+  int _currentViewIndex = 1; // 0: 年视图, 1: 月视图, 2: 周视图
   
   late final AnimationController _scaleController;
   late final AnimationController _opacityController;
@@ -55,7 +55,6 @@ class _CalendarScreenState extends State<CalendarScreen> with TickerProviderStat
     _importExportManager = ImportExportManager(_eventsBox);
     _subscriptionManager = SubscriptionManager(_subscriptionsBox, _eventsBox);
     
-    // 初始化缓存
     _updateEventsCache();
     _eventsBox.listenable().addListener(_updateEventsCache);
     
@@ -163,36 +162,26 @@ class _CalendarScreenState extends State<CalendarScreen> with TickerProviderStat
     setState(() {
       _focusedDay = now;
       _selectedDay = now;
-      _currentViewIndex = 1; // 强制切回月视图
+      _currentViewIndex = 1;
     });
     HapticFeedback.mediumImpact();
   }
   
-  // [修复] 快速添加事件，补全了 onEventSaved 参数
   void _quickAddEvent() {
     Navigator.push(
       context, 
       MaterialPageRoute(
         builder: (context) => EventEditScreen(
-          // 传入选中的日期，或者今天
           selectedDate: _selectedDay ?? DateTime.now(),
-          
-          // [关键修复] 当新事件保存时，将其添加到 Hive 盒子中
           onEventSaved: (newEvent) async {
             await _eventsBox.add(newEvent);
-            // 监听器会自动更新缓存和 UI，无需手动 setState
           },
-          
-          // [关键修复] 必须提供删除回调，虽然新事件一般不会在这里被删除
-          onEventDeleted: (event) {
-             // 空实现
-          },
+          onEventDeleted: (_) {},
         )
       )
     );
   }
 
-  // Helper methods
   Future<void> _autoSyncSubscriptions() async { try { await _subscriptionManager.syncAllSubscriptions(); } catch (e) {} }
   Future<void> _syncSubscriptions() async {
     try {
@@ -284,7 +273,6 @@ class _CalendarScreenState extends State<CalendarScreen> with TickerProviderStat
         locale: 'zh_CN', 
         daysOfWeekHeight: 30,
         shouldFillViewport: true,
-        
         firstDay: DateTime(2000), lastDay: DateTime(2050), focusedDay: _focusedDay,
         selectedDayPredicate: (day) => isSameDay(_selectedDay, day),
         calendarFormat: CalendarFormat.month, availableCalendarFormats: const {CalendarFormat.month: '月'},
@@ -328,9 +316,47 @@ class _CalendarScreenState extends State<CalendarScreen> with TickerProviderStat
           },
           defaultBuilder: (context, day, focusedDay) => _buildDayCell(day, colorScheme, false),
           todayBuilder: (context, day, focusedDay) => _buildDayCell(day, colorScheme, false, isToday: true),
+          
           markerBuilder: (context, day, events) {
             if (events.isEmpty) return null;
-            return Positioned(bottom: 6, child: Row(mainAxisSize: MainAxisSize.min, children: events.take(3).map((event) => Container(margin: const EdgeInsets.symmetric(horizontal: 1), width: 5, height: 5, decoration: BoxDecoration(shape: BoxShape.circle, color: isSameDay(_selectedDay, day) ? colorScheme.onPrimary.withOpacity(0.8) : colorScheme.secondary))).toList()));
+            
+            // [修复] 强制转换为 List<Event>，解决 title 为空的安全检查报错
+            final safeEvents = events.cast<Event>();
+            
+            return Positioned(
+              bottom: 6,
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: safeEvents.take(4).map((event) {
+                  // 默认颜色
+                  Color dotColor = colorScheme.secondary; 
+                  
+                  // 根据标题关键词变色
+                  final title = event.title;
+                  if (title.contains('买') || title.contains('入') || title.contains('加')) {
+                    dotColor = Colors.red; 
+                  } else if (title.contains('卖') || title.contains('出') || title.contains('止')) {
+                    dotColor = Colors.green; 
+                  } else if (title.contains('盈') || title.contains('赚')) {
+                    dotColor = Colors.red.shade700; 
+                  } else if (title.contains('亏') || title.contains('损')) {
+                    dotColor = Colors.green.shade700; 
+                  }
+
+                  return Container(
+                    margin: const EdgeInsets.symmetric(horizontal: 1.5),
+                    width: 6, 
+                    height: 6,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: isSameDay(_selectedDay, day) 
+                          ? colorScheme.onPrimary 
+                          : dotColor, 
+                    ),
+                  );
+                }).toList(),
+              ),
+            );
           },
         ),
       ),
@@ -374,9 +400,31 @@ class _CalendarScreenState extends State<CalendarScreen> with TickerProviderStat
         defaultBuilder: (context, day, focusedDay) => _buildDayCell(day, colorScheme, true),
         todayBuilder: (context, day, focusedDay) => _buildDayCell(day, colorScheme, true, isToday: true),
         selectedBuilder: (context, day, focusedDay) => _buildDayCell(day, colorScheme, true, isSelected: true),
+        
         markerBuilder: (context, day, events) {
           if (events.isEmpty) return null;
-          return Positioned(bottom: 4, child: Container(width: 5, height: 5, decoration: BoxDecoration(shape: BoxShape.circle, color: isSameDay(_selectedDay, day) ? colorScheme.onPrimary.withOpacity(0.8) : colorScheme.secondary)));
+          
+          // [修复] 强制类型转换
+          final safeEvents = events.cast<Event>();
+          
+          Color dotColor = colorScheme.secondary;
+          for (var event in safeEvents) {
+             final t = event.title;
+             if (t.contains('买') || t.contains('入')) { dotColor = Colors.red; break; }
+             if (t.contains('卖') || t.contains('出')) { dotColor = Colors.green; break; }
+          }
+
+          return Positioned(
+            bottom: 4, 
+            child: Container(
+              width: 6, 
+              height: 6, 
+              decoration: BoxDecoration(
+                shape: BoxShape.circle, 
+                color: isSameDay(_selectedDay, day) ? colorScheme.onPrimary : dotColor
+              )
+            )
+          );
         },
       ),
     );
@@ -492,7 +540,6 @@ class _CalendarScreenState extends State<CalendarScreen> with TickerProviderStat
                       builder: (context, box, _) {
                         final events = _getEventsForDay(_selectedDay!).cast<Event>();
                         if (events.isEmpty) {
-                          // [优化] 空状态下增加快速添加按钮
                           return Center(
                             child: Column(
                               mainAxisAlignment: MainAxisAlignment.center, 
